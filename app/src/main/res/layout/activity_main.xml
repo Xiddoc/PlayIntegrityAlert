@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true">
@@ -17,8 +18,7 @@
             android:textStyle="bold"
             android:textSize="18sp"
             android:paddingBottom="12dp"
-            tools:ignore="HardcodedText"
-            xmlns:tools="http://schemas.android.com/tools" />
+            tools:ignore="HardcodedText" />
 
         <TextView
             android:id="@+id/instructions"
@@ -27,10 +27,25 @@
             android:text="@string/instructions"
             android:paddingBottom="16dp" />
 
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/watch_all"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/watch_all_label"
+            android:paddingVertical="8dp" />
+
+        <Button
+            android:id="@+id/btn_choose"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_choose"
+            android:paddingBottom="8dp" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
+            android:paddingTop="8dp"
             android:paddingBottom="8dp">
 
             <Button

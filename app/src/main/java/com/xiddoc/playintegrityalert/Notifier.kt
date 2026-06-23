@@ -6,14 +6,13 @@ import android.content.Intent
 import de.robv.android.xposed.XposedBridge
 
 /**
- * Bridges a detection from inside a hooked app process to the Play Integrity
+ * Bridges a detection from the hooked Play Store process to the Play Integrity
  * Alert app, which raises the actual notification.
  *
- * The alert is posted by our own app rather than from the hooked process, so it
- * always carries our icon/identity and uses our notification channel and
- * permission — independent of whether the hooked app holds `POST_NOTIFICATIONS`.
- * The broadcast is explicit (a named component) and flagged to wake our app even
- * if it has never been launched.
+ * The alert is posted by our own app rather than from the Play Store process, so
+ * it always carries our icon/identity and uses our notification channel and
+ * permission. The broadcast is explicit (a named component) and flagged to wake
+ * our app even if it has never been launched.
  */
 object Notifier {
 

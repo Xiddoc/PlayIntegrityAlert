@@ -1,0 +1,8 @@
+<resources>
+    <!-- Default scope LSPosed suggests: the Play Store process hosts the integrity
+         service, and this app itself so the "module active" status can verify. -->
+    <string-array name="xposed_scope">
+        <item>com.android.vending</item>
+        <item>com.xiddoc.playintegrityalert</item>
+    </string-array>
+</resources>

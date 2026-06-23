@@ -82,7 +82,7 @@ jobs:
           uv run --project .beetroot beetroot restart "$INSTANCE"
           ./scripts/wait-boot.sh "$SERIAL"
 
-      - name: Assert the hook installs in the scoped app
+      - name: Assert the module loads in the scoped app
         run: bash scripts/e2e-lsposed.sh check "$SERIAL" "$TARGET"
 
       - name: Dump LSPosed module log on failure

@@ -10,6 +10,7 @@ import android.widget.Button
 import android.widget.TextView
 import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
 import java.text.DateFormat
 import java.util.Date
 
@@ -19,6 +20,16 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         requestNotificationPermissionIfNeeded()
+
+        val chooseButton = findViewById<Button>(R.id.btn_choose)
+        val watchAll = findViewById<SwitchCompat>(R.id.watch_all)
+        watchAll.isChecked = Config.isWatchAll(this)
+        chooseButton.isEnabled = !watchAll.isChecked
+        watchAll.setOnCheckedChangeListener { _, checked ->
+            Config.setWatchAll(this, checked)
+            chooseButton.isEnabled = !checked
+        }
+        chooseButton.setOnClickListener { startActivity(Intent(this, AppPickerActivity::class.java)) }
 
         findViewById<Button>(R.id.btn_test).setOnClickListener {
             // Self-broadcast a fake event so the notification path can be verified.

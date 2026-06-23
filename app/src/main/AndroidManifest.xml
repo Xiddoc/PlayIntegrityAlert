@@ -33,8 +33,13 @@
             </intent-filter>
         </activity>
 
-        <!-- Receives best-effort detection events from hooked processes to keep an
-             in-app history. The notification itself is posted by the hook directly. -->
+        <activity
+            android:name=".AppPickerActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
+        <!-- Receives detection events from the hook (in the Play Store process) and
+             raises the alert from our own app, with our icon and notification channel. -->
         <receiver
             android:name=".DetectionReceiver"
             android:exported="true"
@@ -50,6 +55,9 @@
         <meta-data
             android:name="xposedminversion"
             android:value="100" />
-        <!-- No xposedscope: the user chooses which apps to watch in LSPosed. -->
+        <!-- Suggested scope: Play Store (hosts the integrity service) + this app. -->
+        <meta-data
+            android:name="xposedscope"
+            android:resource="@array/xposed_scope" />
     </application>
 </manifest>

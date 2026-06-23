@@ -2,10 +2,11 @@
 # Play Integrity Alert — LSPosed module-hook e2e driver.
 #
 # Adapted from Beetroot's tests/fixtures/.../lsposed-hook-e2e.sh. Proves the
-# module loads under LSPosed and installs its Play Integrity hooks inside an app
-# it is scoped to: installs the module APK, enables it in LSPosed's scope for a
-# target package, and (after a reboot) asserts the module's PIA_HOOK_INSTALLED
-# marker appears in LSPosed's module log when the target launches.
+# module loads under LSPosed inside an app it is scoped to: installs the module
+# APK, enables it in LSPosed's scope for a target package, and (after a reboot)
+# asserts the module's PIA_MODULE_LOADED marker appears in LSPosed's module log
+# when the target launches. (Detection itself runs in the Play Store process and
+# needs GApps + a real integrity caller, so this gate proves module load.)
 #
 # Prerequisites: the instance is booted with the Vector/LSPosed framework active
 # (a Zygisk module goes live on the *second* boot, so the caller flashes Vector
@@ -20,7 +21,7 @@ set -euo pipefail
 _sh() { adb -s "$SERIAL" shell "$1"; }
 
 MODULE_PKG="com.xiddoc.playintegrityalert"
-MARKER="PIA_HOOK_INSTALLED"
+MARKER="PIA_MODULE_LOADED"
 LSPD_LOG='/data/adb/lspd/log/modules_*.log'
 
 cmd_setup() {
@@ -47,7 +48,7 @@ cmd_check() {
     local deadline=$(($(date +%s) + 120))
     while [ "$(date +%s)" -lt "$deadline" ]; do
         if _sh "cat $LSPD_LOG 2>/dev/null" | grep -q "$MARKER pkg=$target"; then
-            echo "[+] PASS — module hook installed in target:"
+            echo "[+] PASS — module loaded into target:"
             _sh "cat $LSPD_LOG 2>/dev/null" | grep "PIA_" | tail -10
             return 0
         fi
