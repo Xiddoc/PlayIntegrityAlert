@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">Play Integrity Alert</string>
+    <string name="xposed_description">Notifies you whenever an app in the LSPosed scope requests a Google Play Integrity verdict.</string>
+
+    <string name="channel_name">Play Integrity usage</string>
+    <string name="channel_description">Alerts when a watched app uses the Play Integrity API.</string>
+
+    <string name="notification_title">Play Integrity API used</string>
+    <string name="notification_text">%1$s requested a Play Integrity verdict</string>
+    <string name="notification_big_text">%1$s (%2$s) just asked Google Play for a Play Integrity verdict.</string>
+
+    <string name="status_active">Module active ✓</string>
+    <string name="status_inactive">Module not active — enable it in LSPosed, then add this app to its own scope to verify.</string>
+
+    <string name="instructions">1. Enable this module in LSPosed.\n2. In the module’s scope, tick every app you want to watch (and this app, to verify status).\n3. Force-stop the watched apps (or reboot).\nWhen a watched app requests a Play Integrity verdict, you’ll get a notification here.</string>
+
+    <string name="history_title">Recent detections</string>
+    <string name="history_empty">No Play Integrity usage detected yet.</string>
+
+    <string name="btn_test">Send test notification</string>
+    <string name="btn_clear">Clear history</string>
+</resources>

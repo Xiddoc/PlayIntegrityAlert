@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.PlayIntegrityAlert" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/brand</item>
+        <item name="colorPrimaryDark">@color/brand_dark</item>
+    </style>
+</resources>

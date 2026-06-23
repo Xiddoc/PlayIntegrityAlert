@@ -1,0 +1,23 @@
+# Beetroot instance config for the Play Integrity Alert e2e.
+# Baseline Android 14 + LSPosed (Vector) flashed declaratively as a Zygisk
+# module, so the framework comes up on boot with no manual tap-through. Modelled
+# on Beetroot's examples/lsposed.yaml.
+#
+# Pinning: when a newer Vector is cut, look up the release at
+# https://github.com/JingMatrix/Vector/releases, swap the URL, and recompute the
+# digest with `curl -sL <url> | sha256sum`.
+
+api_version: 4
+
+android:
+  version: 14
+
+modules:
+  # Vector (Zygisk, Release) — the LSPosed framework module.
+  - url: https://github.com/JingMatrix/Vector/releases/download/v2.0/Vector-v2.0-3021-Release.zip
+    sha256: d5e39669c02c2c699ab948eb8f3639b348eefb7749553224a9c62fa4a2f2dc18
+
+magisk:
+  denylist:
+    - com.google.android.gms
+    - com.google.android.gms.unstable
