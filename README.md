@@ -61,7 +61,7 @@ process.
 
 ## Usage
 
-1. Build/install the APK (below) and enable **Play Integrity Alert** in LSPosed.
+1. Install the APK (from [Releases](https://github.com/Xiddoc/PlayIntegrityAlert/releases/latest)) and enable **Play Integrity Alert** in LSPosed.
 2. In the module's **Scope**, tick **Google Play Store**. Also tick **Play
    Integrity Alert itself** — the in-app status then reads *Module active ✓*.
    (LSPosed suggests exactly these via the module's default scope.)
@@ -73,26 +73,6 @@ process.
 
 Use **Send test notification** in the app to verify the notification path end to
 end.
-
-## Building
-
-Standard Gradle Android build — JDK 17 and the Android SDK:
-
-```bash
-./gradlew :app:assembleDebug
-# → app/build/outputs/apk/debug/app-debug.apk
-```
-
-- `compileSdk` 35, `minSdk` 24, `targetSdk` 35.
-- The Xposed API (`de.robv.android.xposed:api:82`) is a **`compileOnly`**
-  dependency — the framework provides the real implementation at runtime, and it
-  is never bundled into the APK.
-- `xposedminversion` is `100` (the modern LSPosed Xposed-API line). It loads on
-  any framework reporting API ≥ 100, including the v102+ requested for this
-  project.
-
-Pre-built signed APKs are published on the [Releases](https://github.com/Xiddoc/PlayIntegrityAlert/releases/latest) page;
-see `CLAUDE.md` for how the release pipeline and signing are set up.
 
 ## License
 
