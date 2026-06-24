@@ -10,6 +10,8 @@ Scope the module to Google Play Store, choose which apps you care about (or watc
 them all), and whenever one of them calls the Play Integrity API you get a
 notification — with the app's name — plus an in-app history of every detection.
 
+This module behaves just like the [GrapheneOS Play Integrity alert](https://x.com/GrapheneOS/status/1877790719009529972) feature, and is inspired by it.
+
 ## How it works
 
 The Play Integrity / Play Core client libraries don't compute a verdict
