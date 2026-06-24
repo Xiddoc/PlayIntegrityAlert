@@ -61,7 +61,10 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "${PIA_KEYSTORE_BASE64:-}" ]; then
-            echo "$PIA_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            # Strip all whitespace before decoding: GNU `base64 -d` rejects stray
+            # whitespace as "invalid input", and a secret pasted from `base64`
+            # (line-wrapped) or through a CRLF clipboard carries newlines/CRs.
+            printf '%s' "$PIA_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "PIA_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
             echo "Using release signing key."
           else
