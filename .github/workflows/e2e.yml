@@ -1,0 +1,101 @@
+name: e2e
+
+# Real boots are slow, so this does not run on every push. Trigger it by adding
+# the `e2e` label to a PR, running it manually from the Actions tab, or via the
+# nightly schedule on the default branch. Mirrors Beetroot's own e2e gating.
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize]
+  schedule:
+    - cron: "0 4 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  lsposed-hook:
+    # Skip the PR trigger unless the `e2e` label is present.
+    if: >
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'e2e')
+    runs-on: ubuntu-latest
+    # Best-effort / informational: GitHub-hosted runners no longer ship the
+    # binder_linux kernel module (Beetroot CI "Option A"), so the boot can't be
+    # brought up on the default runner. Keep the job from blocking the PR until the
+    # binderless VM backend is wired up; the build.yml gate is the real check.
+    continue-on-error: true
+    timeout-minutes: 60
+    env:
+      INSTANCE: ci
+      SERIAL: 127.0.0.1:5555
+      TARGET: com.android.settings
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out Beetroot (CLI + build context)
+        uses: actions/checkout@v4
+        with:
+          repository: Xiddoc/Beetroot
+          path: .beetroot
+          ref: master
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build the module APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Load the binder kernel module
+        run: |
+          sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
+          ls -l /dev/binder*
+
+      - name: Install adb + uv
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y adb
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Boot a rooted Android-14 + LSPosed instance
+        run: |
+          set -euo pipefail
+          BEE="uv run --project .beetroot beetroot"
+          $BEE build none
+          $BEE create "$INSTANCE"
+          cp e2e/beetroot-lsposed.yaml "$INSTANCE/beetroot.yaml"
+          $BEE apply "$INSTANCE"
+          $BEE up "$INSTANCE"
+          ./scripts/wait-boot.sh "$SERIAL"
+          # Zygisk modules (Vector/LSPosed) go live on the second boot.
+          $BEE restart "$INSTANCE"
+          ./scripts/wait-boot.sh "$SERIAL"
+
+      - name: Enable the module in LSPosed scope
+        run: |
+          bash scripts/e2e-lsposed.sh setup "$SERIAL" \
+            app/build/outputs/apk/debug/app-debug.apk "$TARGET"
+
+      - name: Reboot to apply scope
+        run: |
+          uv run --project .beetroot beetroot restart "$INSTANCE"
+          ./scripts/wait-boot.sh "$SERIAL"
+
+      - name: Assert the module loads in the scoped app
+        run: bash scripts/e2e-lsposed.sh check "$SERIAL" "$TARGET"
+
+      - name: Dump LSPosed module log on failure
+        if: failure()
+        run: |
+          adb -s "$SERIAL" root || true
+          adb -s "$SERIAL" shell 'cat /data/adb/lspd/log/modules_*.log 2>/dev/null' | tail -100 || true
+
+      - name: Tear down
+        if: always()
+        run: uv run --project .beetroot beetroot destroy "$INSTANCE" || true
