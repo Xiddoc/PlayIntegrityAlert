@@ -1,7 +1,6 @@
 package com.xiddoc.playintegrityalert
 
 import android.app.NotificationManager
-import android.os.Build
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertNotNull
 import org.junit.Test
@@ -14,16 +13,9 @@ class AlertAppTest {
 
     @Test
     @Config(sdk = [33])
-    fun createsNotificationChannelOnOreoPlus() {
+    fun createsNotificationChannel() {
         val app = ApplicationProvider.getApplicationContext<AlertApp>()
         val nm = app.getSystemService(NotificationManager::class.java)
         assertNotNull(nm.getNotificationChannel(Constants.CHANNEL_ID))
-    }
-
-    @Test
-    @Config(sdk = [Build.VERSION_CODES.N])
-    fun skipsChannelCreationBeforeOreo() {
-        // onCreate runs during sandbox setup and takes the pre-Oreo early-return path.
-        assertNotNull(ApplicationProvider.getApplicationContext<AlertApp>())
     }
 }

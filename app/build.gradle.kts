@@ -13,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "com.xiddoc.playintegrityalert"
-        minSdk = 24
+        minSdk = 30
         targetSdk = 35
         // Version is injected by the release workflow (autobumped from the latest
         // git tag); the literals below are the local-build fallback.

@@ -3,7 +3,6 @@ package com.xiddoc.playintegrityalert
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.os.Build
 
 class AlertApp : Application() {
     override fun onCreate() {
@@ -12,7 +11,7 @@ class AlertApp : Application() {
     }
 
     private fun createChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        // minSdk is 30 (Android 11), so notification channels (API 26+) always exist.
         val channel = NotificationChannel(
             Constants.CHANNEL_ID,
             getString(R.string.channel_name),

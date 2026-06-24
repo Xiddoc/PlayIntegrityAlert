@@ -13,7 +13,7 @@ the detection. It only **observes**; it never alters the verdict.
 ## Commands
 
 Standard Gradle Android build (JDK 17 + Android SDK; `compileSdk`/`targetSdk` 35,
-`minSdk` 24):
+`minSdk` 30 — Android 11):
 
 ```bash
 ./gradlew :app:assembleDebug                       # debug APK → app/build/outputs/apk/debug/

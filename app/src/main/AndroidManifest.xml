@@ -45,7 +45,7 @@
             android:exported="true"
             tools:ignore="ExportedReceiver" />
 
-        <!-- Xposed / LSPosed module metadata (API v100+ / LSPosed era). -->
+        <!-- Xposed / LSPosed module metadata (libxposed API v102+ / LSPosed era). -->
         <meta-data
             android:name="xposedmodule"
             android:value="true" />
@@ -54,7 +54,7 @@
             android:value="@string/xposed_description" />
         <meta-data
             android:name="xposedminversion"
-            android:value="100" />
+            android:value="102" />
         <!-- Suggested scope: Play Store (hosts the integrity service) + this app. -->
         <meta-data
             android:name="xposedscope"
