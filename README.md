@@ -92,8 +92,32 @@ CI is split into two GitHub Actions workflows.
 
 ### `build.yml` — the gate (every push / PR)
 
-Builds the module with Gradle, runs Android lint, and uploads the debug APK as a
-build artifact.
+Builds the module with Gradle, runs the unit suite behind a **100% coverage
+gate**, runs Android lint, and uploads the debug APK as a build artifact. A
+coverage regression below 100% line/branch on the covered logic fails the build.
+
+### Tests & coverage
+
+The detection logic is verified by a host-side JVM suite (JUnit + Robolectric +
+MockK — no device or emulator needed):
+
+```bash
+./gradlew :app:testDebugUnitTest                  # run the suite
+./gradlew :app:jacocoTestReport                   # HTML report → app/build/reports/jacoco/…
+./gradlew :app:jacocoTestCoverageVerification     # enforce 100% line + branch
+```
+
+The gate targets **100% line and branch coverage** of the safety-critical logic:
+the request/response heuristic and caller extraction (`IntegrityRequestInspector`),
+the per-caller debounce (`AlertThrottle`), the watch-list decision (`WatchList`),
+config read/fallback (`Config`), detection serialization (`DetectionStore`), the
+broadcast bridge (`Notifier`), and the alert receiver (`DetectionReceiver`).
+
+Thin framework glue with no decision logic of its own — the Xposed entry/hook
+wiring (`XposedEntry`, `IntegrityServiceHook`), the `XSharedPreferences` binding
+(`XSharedConfigSource`), and the UI Activities — is excluded from the coverage
+metric (with documented globs in `app/build.gradle.kts`) and is instead exercised
+by the build, lint, and the e2e.
 
 ### `e2e.yml` — real LSPosed boot (gated)
 
@@ -127,16 +151,20 @@ manual dispatch, or the nightly schedule — mirroring Beetroot's own e2e gating
 
 ```
 app/src/main/java/com/xiddoc/playintegrityalert/
-  XposedEntry.kt           # module entry; installs the hook in the Play Store process
-  IntegrityServiceHook.kt  # hooks Finsky integrity services, reads caller package
-  WatchList.kt             # reads the watch-list in-process (XSharedPreferences)
-  Config.kt                # app-side watch-list reader/writer (world-readable prefs)
-  Notifier.kt              # bridges a detection to our app via broadcast
-  DetectionReceiver.kt     # raises the notification + records history
-  DetectionStore.kt        # persistent ring buffer of recent detections
-  MainActivity.kt          # status + watch-all toggle + history + test button
-  AppPickerActivity.kt     # per-app watch-list picker
-  AlertApp.kt              # notification channel
+  XposedEntry.kt             # module entry; installs the hook in the Play Store process
+  IntegrityServiceHook.kt    # hooks Finsky integrity services; thin Xposed wiring
+  IntegrityRequestInspector.kt # pure request/response heuristic + caller extraction
+  AlertThrottle.kt           # per-caller debounce (injectable clock)
+  WatchList.kt               # watch-list decision; reads via a swappable Source
+  XSharedConfigSource.kt     # default Source backed by XSharedPreferences
+  Config.kt                  # app-side watch-list reader/writer (world-readable prefs)
+  Notifier.kt                # bridges a detection to our app via broadcast
+  DetectionReceiver.kt       # raises the notification + records history
+  DetectionStore.kt          # persistent ring buffer of recent detections
+  MainActivity.kt            # status + watch-all toggle + history + test button
+  AppPickerActivity.kt       # per-app watch-list picker
+  AlertApp.kt                # notification channel
+app/src/test/java/com/xiddoc/playintegrityalert/  # JVM unit suite (100% gate)
 app/src/main/assets/xposed_init   # names the entry class (classic Xposed contract)
 scripts/                # e2e driver + boot-wait helper
 e2e/beetroot-lsposed.yaml         # Beetroot instance config (Android 14 + Vector)

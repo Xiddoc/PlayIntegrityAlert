@@ -2,11 +2,8 @@ package com.xiddoc.playintegrityalert
 
 import android.app.AndroidAppHelper
 import android.content.Context
-import android.os.Bundle
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
-import java.util.concurrent.ConcurrentHashMap
-import java.util.regex.Pattern
 
 /**
  * Installed once, inside the Play Store (`com.android.vending`) process. Hooks the
@@ -18,22 +15,19 @@ import java.util.regex.Pattern
  * request Bundle), which is markedly lighter on battery than injecting the module
  * into each scoped app. The approach mirrors ElDavoo/PlayIntegrityBreak, trimmed
  * to detection only: we never alter the verdict.
+ *
+ * This object is the thin Xposed-runtime wiring; the decision logic lives in
+ * [IntegrityRequestInspector], [AlertThrottle] and [WatchList], which are unit
+ * tested. The hook plumbing itself is covered by the e2e.
  */
 object IntegrityServiceHook {
 
-    /** Per-caller throttle so one request burst yields one alert. */
-    private const val DEBOUNCE_MS = 4_000L
-    private val lastAlertAt = ConcurrentHashMap<String, Long>()
-
-    private val packageNamePattern =
-        Pattern.compile("[a-zA-Z][a-zA-Z0-9_]*(?:\\.[a-zA-Z0-9_]+)+")
+    private val throttle = AlertThrottle()
 
     fun install(classLoader: ClassLoader) {
         val callback = object : XC_MethodHook() {
             override fun beforeHookedMethod(param: MethodHookParam) {
-                val args = param.args ?: return
-                if (!looksLikeRequest(args)) return
-                val caller = extractCallerPackage(args) ?: return
+                val caller = IntegrityRequestInspector.callerPackage(param.args) ?: return
                 onIntegrityRequest(caller, param.thisObject)
             }
         }
@@ -51,43 +45,9 @@ object IntegrityServiceHook {
         XposedBridge.log("[${Constants.TAG}] ${Constants.LOG_INSTALLED} pkg=${Constants.VENDING_PACKAGE} methods=$hooked")
     }
 
-    /** A request carries a caller package and/or a nonce; a response carries token/error. */
-    private fun looksLikeRequest(args: Array<Any?>): Boolean {
-        args.forEach { arg ->
-            val bundle = arg as? Bundle ?: return@forEach
-            if (bundle.containsKey("token") || bundle.containsKey("error")) return@forEach
-            val hasPkg = Constants.CALLER_PACKAGE_KEYS.any { bundle.containsKey(it) }
-            val hasNonce = runCatching {
-                bundle.keySet().any { it.contains("nonce", ignoreCase = true) }
-            }.getOrDefault(false)
-            if (hasPkg || hasNonce) return true
-        }
-        return false
-    }
-
-    private fun extractCallerPackage(args: Array<Any?>): String? {
-        args.forEach { arg ->
-            val bundle = arg as? Bundle ?: return@forEach
-            Constants.CALLER_PACKAGE_KEYS.forEach { key ->
-                bundle.getString(key)?.takeIf { it.isNotBlank() }?.let { return it }
-            }
-            // Fallback: any package-shaped string value in the request Bundle.
-            runCatching {
-                bundle.keySet().forEach { key ->
-                    val value = bundle.getString(key) ?: return@forEach
-                    if (packageNamePattern.matcher(value).matches()) return value
-                }
-            }
-        }
-        return null
-    }
-
     private fun onIntegrityRequest(caller: String, serviceObject: Any?) {
         if (!WatchList.isWatched(caller)) return
-
-        val now = System.currentTimeMillis()
-        val previous = lastAlertAt.put(caller, now)
-        if (previous != null && now - previous < DEBOUNCE_MS) return
+        if (!throttle.allow(caller)) return
 
         XposedBridge.log("[${Constants.TAG}] ${Constants.LOG_DETECTED} pkg=$caller")
 

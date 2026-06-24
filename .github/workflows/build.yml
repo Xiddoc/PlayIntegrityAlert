@@ -24,6 +24,19 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Unit tests + 100% coverage gate
+        # Robolectric JVM tests; fails the build unless the covered logic hits
+        # 100% line and branch coverage (see app/build.gradle.kts).
+        run: ./gradlew :app:testDebugUnitTest :app:jacocoTestReport :app:jacocoTestCoverageVerification --stacktrace
+
+      - name: Upload coverage report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-coverage-report
+          path: app/build/reports/jacoco/jacocoTestReport
+          if-no-files-found: warn
+
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug --stacktrace
 

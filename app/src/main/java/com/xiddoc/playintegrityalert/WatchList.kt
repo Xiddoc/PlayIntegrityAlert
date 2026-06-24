@@ -1,26 +1,32 @@
 package com.xiddoc.playintegrityalert
 
-import de.robv.android.xposed.XSharedPreferences
-
 /**
  * Read-only view, from inside the hooked Play Store process, of the watch-list the
- * user configured in our app. Backed by [XSharedPreferences] — LSPosed's supported
- * channel for a module to read its own app's preferences across processes.
+ * user configured in our app.
+ *
+ * The decision logic lives here and is unit tested; the actual cross-process read
+ * is delegated to a [Source], whose default implementation ([XSharedConfigSource])
+ * is backed by XSharedPreferences.
  *
  * Fails safe: if the prefs can't be read (e.g. not running under LSPosed, or the
- * file isn't world-readable yet), [KEY_WATCH_ALL] defaults to true, so the user
- * still gets alerts rather than silent failure.
+ * file isn't world-readable yet), watch-all defaults to true, so the user still
+ * gets alerts rather than silent failure.
  */
 object WatchList {
 
-    private val prefs by lazy {
-        XSharedPreferences(Constants.OWN_PACKAGE, Constants.PREFS_CONFIG)
+    /** Cross-process view of the watch-list config. */
+    internal interface Source {
+        fun reload()
+        fun watchAll(): Boolean
+        fun watched(): Set<String>
     }
 
+    /** Swappable so unit tests can drive the decision logic without Xposed. */
+    internal var source: Source = XSharedConfigSource()
+
     fun isWatched(packageName: String): Boolean {
-        runCatching { prefs.reload() }
-        if (prefs.getBoolean(Constants.KEY_WATCH_ALL, true)) return true
-        return prefs.getStringSet(Constants.KEY_WATCHED, emptySet())
-            ?.contains(packageName) == true
+        source.reload()
+        if (source.watchAll()) return true
+        return packageName in source.watched()
     }
 }
