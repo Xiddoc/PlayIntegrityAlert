@@ -117,6 +117,12 @@ module actually loads under a *real* LSPosed framework:
 Because real boots are slow, `e2e.yml` runs only on the **`e2e`** PR label,
 manual dispatch, or the nightly schedule — mirroring Beetroot's own e2e gating.
 
+> **Best-effort on GitHub-hosted runners.** Beetroot's CI "Option A" loads the
+> host `binder_linux` kernel module, but current GitHub-hosted runner kernels no
+> longer ship it, so the boot can't come up on the default runner. The job is
+> marked `continue-on-error` (informational, never blocks the PR) until the
+> binderless VM backend is wired up. `build.yml` is the enforcing gate.
+
 ## Project layout
 
 ```

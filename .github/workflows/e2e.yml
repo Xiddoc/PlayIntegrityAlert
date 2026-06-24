@@ -20,6 +20,11 @@ jobs:
       github.event_name != 'pull_request' ||
       contains(github.event.pull_request.labels.*.name, 'e2e')
     runs-on: ubuntu-latest
+    # Best-effort / informational: GitHub-hosted runners no longer ship the
+    # binder_linux kernel module (Beetroot CI "Option A"), so the boot can't be
+    # brought up on the default runner. Keep the job from blocking the PR until the
+    # binderless VM backend is wired up; the build.yml gate is the real check.
+    continue-on-error: true
     timeout-minutes: 60
     env:
       INSTANCE: ci
