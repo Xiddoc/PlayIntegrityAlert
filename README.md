@@ -87,6 +87,24 @@ Standard Gradle Android build — JDK 17 and the Android SDK:
   any framework reporting API ≥ 100, including the v102+ requested for this
   project.
 
+### Releases
+
+Every merge to `master` runs the `release` workflow, which autobumps the version
+(patch-bumps the latest `v*` tag), builds an **R8-minified, signed** release APK
+(`./gradlew :app:assembleRelease`), tags the commit and publishes a
+[GitHub Release](../../releases) with the APK attached — grab the latest
+`PlayIntegrityAlert-vX.Y.Z.apk` there.
+
+Release signing uses the `PIA_KEYSTORE_BASE64`, `PIA_KEYSTORE_PASSWORD`,
+`PIA_KEY_ALIAS` and `PIA_KEY_PASSWORD` repository secrets (`PIA_KEYSTORE_BASE64`
+is the keystore file, base64-encoded). If they aren't configured the build still
+succeeds, signed with the debug key. To build a release locally:
+
+```bash
+./gradlew :app:assembleRelease
+# → app/build/outputs/apk/release/app-release.apk
+```
+
 ## License
 
 See [LICENSE](LICENSE).

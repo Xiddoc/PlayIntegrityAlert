@@ -95,11 +95,22 @@ Key design seams to respect:
 
 ## Continuous integration
 
-Two workflows under `.github/workflows/`:
+Three workflows under `.github/workflows/`:
 
 - **`build.yml` — the gate (every push / PR).** Gradle build + the unit suite
   behind the 100% coverage gate + Android lint + uploads the debug APK. This is
   the enforcing gate.
+- **`release.yml` — cut a release (every merge to `master`).** Autobumps the
+  version (patch-bumps the latest `v*` git tag for `versionName`; the commit count
+  is the monotonic `versionCode`, both injected into the build via the
+  `VERSION_NAME` / `VERSION_CODE` Gradle properties), builds the **R8-minified,
+  signed** release APK (`:app:assembleRelease`), then tags the commit and
+  publishes a GitHub Release with the APK attached. Release signing uses the
+  `PIA_KEYSTORE_BASE64` / `PIA_KEYSTORE_PASSWORD` / `PIA_KEY_ALIAS` /
+  `PIA_KEY_PASSWORD` repo secrets; with none set it falls back to the debug key so
+  the APK is still installable. The `release` build type enables `isMinifyEnabled`
+  + `isShrinkResources`, so any new reflectively-referenced symbol must be kept in
+  `proguard-rules.pro` or it will be stripped.
 - **`e2e.yml` — real LSPosed boot (gated).** Uses
   [Xiddoc/Beetroot](https://github.com/Xiddoc/Beetroot) to boot a rooted
   Android 14 + LSPosed (Vector) instance (`e2e/beetroot-lsposed.yaml`), installs
