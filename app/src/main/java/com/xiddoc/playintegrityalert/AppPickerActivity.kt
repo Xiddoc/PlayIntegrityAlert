@@ -26,7 +26,7 @@ class AppPickerActivity : AppCompatActivity() {
     }
 
     private fun loadApps() {
-        Thread {
+        runInBackground {
             val pm = packageManager
             val apps = pm.getInstalledApplications(0)
                 .filter { it.packageName != Constants.OWN_PACKAGE }
@@ -47,12 +47,24 @@ class AppPickerActivity : AppCompatActivity() {
                 }
                 listView.setOnItemClickListener { _, _, _, _ -> save() }
             }
-        }.start()
+        }
     }
 
     private fun save() {
         val checked = listView.checkedItemPositions
         val selected = packages.filterIndexed { i, _ -> checked.get(i) }.toSet()
         Config.setWatched(this, selected)
+    }
+
+    companion object {
+        /**
+         * Runs the package-list scan off the UI thread. Swappable so unit tests can
+         * run it synchronously; defaults to a background thread.
+         */
+        internal var runInBackground: (() -> Unit) -> Unit = ::spawnThread
+
+        internal fun spawnThread(block: () -> Unit) {
+            Thread { block() }.start()
+        }
     }
 }

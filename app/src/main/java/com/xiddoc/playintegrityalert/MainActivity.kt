@@ -51,10 +51,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        findViewById<TextView>(R.id.status).text =
-            if (isModuleActivated()) getString(R.string.status_active) else getString(R.string.status_inactive)
+        findViewById<TextView>(R.id.status).text = statusText(isModuleActivated())
         renderHistory()
     }
+
+    /** Status label for whether the Xposed module is active; split out for testing. */
+    internal fun statusText(active: Boolean): String =
+        if (active) getString(R.string.status_active) else getString(R.string.status_inactive)
 
     private fun renderHistory() {
         val view = findViewById<TextView>(R.id.history)

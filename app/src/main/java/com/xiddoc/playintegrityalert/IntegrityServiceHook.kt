@@ -22,7 +22,7 @@ import de.robv.android.xposed.XposedBridge
  */
 object IntegrityServiceHook {
 
-    private val throttle = AlertThrottle()
+    internal var throttle = AlertThrottle()
 
     fun install(classLoader: ClassLoader) {
         val callback = object : XC_MethodHook() {
@@ -45,7 +45,7 @@ object IntegrityServiceHook {
         XposedBridge.log("[${Constants.TAG}] ${Constants.LOG_INSTALLED} pkg=${Constants.VENDING_PACKAGE} methods=$hooked")
     }
 
-    private fun onIntegrityRequest(caller: String, serviceObject: Any?) {
+    internal fun onIntegrityRequest(caller: String, serviceObject: Any?) {
         if (!WatchList.isWatched(caller)) return
         if (!throttle.allow(caller)) return
 

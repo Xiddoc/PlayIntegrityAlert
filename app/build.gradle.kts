@@ -64,9 +64,11 @@ dependencies {
     testImplementation(libs.mockk)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.ext.junit)
-    // Xposed stub classes must be present on the unit-test runtime classpath so
-    // hook-adjacent classes load; MockK replaces the stub method bodies in tests.
-    testImplementation(libs.xposed.api)
+    // The Xposed API is compileOnly in main. For unit tests we provide our own
+    // functional fakes of the few Xposed types under src/test/java/de/robv/... (and
+    // android.app.AndroidAppHelper), so the real hook code runs on the JVM. The
+    // published api jar is a throwing stub, so it is deliberately NOT on the test
+    // classpath.
 }
 
 jacoco {
@@ -83,18 +85,12 @@ tasks.withType<Test>().configureEach {
 }
 
 /*
- * Coverage scope: the unit suite targets 100% of the decision logic. The classes
- * below are thin framework glue with no decision logic of their own — the Xposed
- * entry/hook wiring, the XSharedPreferences binding, and the UI Activities — and
- * are verified by the build, lint, and the (non-blocking) e2e instead.
+ * Coverage scope: the unit suite targets 100% line and branch of every hand-written
+ * class — including the Xposed hook wiring and the UI Activities, which run on the
+ * JVM via the functional Xposed fakes under src/test. Only generated code is excluded.
  */
 val coverageExclusions = listOf(
-    // Generated.
     "**/R.class", "**/R\$*.class", "**/BuildConfig.*", "**/Manifest*.*",
-    // Xposed-runtime glue.
-    "**/XposedEntry*", "**/IntegrityServiceHook*", "**/XSharedConfigSource*",
-    // UI Activities.
-    "**/MainActivity*", "**/AppPickerActivity*",
 )
 
 private fun coveredClassTree() =

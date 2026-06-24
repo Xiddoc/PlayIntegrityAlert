@@ -93,8 +93,8 @@ CI is split into two GitHub Actions workflows.
 ### `build.yml` — the gate (every push / PR)
 
 Builds the module with Gradle, runs the unit suite behind a **100% coverage
-gate**, runs Android lint, and uploads the debug APK as a build artifact. A
-coverage regression below 100% line/branch on the covered logic fails the build.
+gate** (line + branch, every hand-written class), runs Android lint, and uploads
+the debug APK as a build artifact. Any coverage regression fails the build.
 
 ### Tests & coverage
 
@@ -107,17 +107,22 @@ MockK — no device or emulator needed):
 ./gradlew :app:jacocoTestCoverageVerification     # enforce 100% line + branch
 ```
 
-The gate targets **100% line and branch coverage** of the safety-critical logic:
-the request/response heuristic and caller extraction (`IntegrityRequestInspector`),
-the per-caller debounce (`AlertThrottle`), the watch-list decision (`WatchList`),
-config read/fallback (`Config`), detection serialization (`DetectionStore`), the
-broadcast bridge (`Notifier`), and the alert receiver (`DetectionReceiver`).
+The gate enforces **100% line and branch coverage of every hand-written class**
+(only generated code — `R`, `BuildConfig`, `Manifest` — is excluded). That spans
+the safety-critical logic (the request/response heuristic and caller extraction in
+`IntegrityRequestInspector`, the per-caller debounce in `AlertThrottle`, the
+watch-list decision in `WatchList`, config read/fallback in `Config`, detection
+serialization in `DetectionStore`, the broadcast bridge in `Notifier`, the alert
+receiver in `DetectionReceiver`) *and* the framework wiring — the Xposed
+entry/hook (`XposedEntry`, `IntegrityServiceHook`), the `XSharedPreferences`
+binding (`XSharedConfigSource`), and the UI Activities.
 
-Thin framework glue with no decision logic of its own — the Xposed entry/hook
-wiring (`XposedEntry`, `IntegrityServiceHook`), the `XSharedPreferences` binding
-(`XSharedConfigSource`), and the UI Activities — is excluded from the coverage
-metric (with documented globs in `app/build.gradle.kts`) and is instead exercised
-by the build, lint, and the e2e.
+To run the hook code on a plain JVM, the suite provides small **functional fakes
+of the Xposed API** (under `src/test/java/de/robv/...` and `android.app.AndroidAppHelper`)
+in place of the published `compileOnly` stub jar, whose method bodies throw. A few
+behaviour-preserving seams (an injectable clock/throttle, a swappable watch-list
+`Source`, and a swappable background runner) keep the time- and thread-dependent
+paths deterministic.
 
 ### `e2e.yml` — real LSPosed boot (gated)
 
