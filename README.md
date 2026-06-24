@@ -1,7 +1,9 @@
 # Play Integrity Alert
 
 <p align="center">
-  <img src="app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" width="120" alt="Play Integrity Alert icon">
+  <a href="https://github.com/Xiddoc/PlayIntegrityAlert/releases/latest">
+    <img src="app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" width="120" alt="Play Integrity Alert icon — download the latest release">
+  </a>
 </p>
 
 PIAlert is an Xposed / LSPosed module that **notifies you the moment an app asks for a Play Integrity verdict.**
