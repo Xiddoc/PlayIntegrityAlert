@@ -12,6 +12,10 @@ notification — with the app's name — plus an in-app history of every detecti
 
 This module behaves just like the [GrapheneOS Play Integrity alert](https://x.com/GrapheneOS/status/1877790719009529972) feature, and is inspired by it.
 
+## Download
+
+Grab the latest signed APK from the [**Releases**](https://github.com/Xiddoc/PlayIntegrityAlert/releases/latest) page — then enable it in LSPosed (see [Usage](#usage)).
+
 ## How it works
 
 The Play Integrity / Play Core client libraries don't compute a verdict
@@ -87,23 +91,8 @@ Standard Gradle Android build — JDK 17 and the Android SDK:
   any framework reporting API ≥ 100, including the v102+ requested for this
   project.
 
-### Releases
-
-Every merge to `master` runs the `release` workflow, which autobumps the version
-(patch-bumps the latest `v*` tag), builds an **R8-minified, signed** release APK
-(`./gradlew :app:assembleRelease`), tags the commit and publishes a
-[GitHub Release](../../releases) with the APK attached — grab the latest
-`PlayIntegrityAlert-vX.Y.Z.apk` there.
-
-Release signing uses the `PIA_KEYSTORE_BASE64`, `PIA_KEYSTORE_PASSWORD`,
-`PIA_KEY_ALIAS` and `PIA_KEY_PASSWORD` repository secrets (`PIA_KEYSTORE_BASE64`
-is the keystore file, base64-encoded). If they aren't configured the build still
-succeeds, signed with the debug key. To build a release locally:
-
-```bash
-./gradlew :app:assembleRelease
-# → app/build/outputs/apk/release/app-release.apk
-```
+Pre-built signed APKs are published on the [Releases](https://github.com/Xiddoc/PlayIntegrityAlert/releases/latest) page;
+see `CLAUDE.md` for how the release pipeline and signing are set up.
 
 ## License
 

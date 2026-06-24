@@ -17,6 +17,7 @@ Standard Gradle Android build (JDK 17 + Android SDK; `compileSdk`/`targetSdk` 35
 
 ```bash
 ./gradlew :app:assembleDebug                       # debug APK → app/build/outputs/apk/debug/
+./gradlew :app:assembleRelease                     # R8-minified, signed release APK → app/build/outputs/apk/release/
 ./gradlew :app:lintDebug                            # Android lint
 ./gradlew :app:testDebugUnitTest                    # run the JVM unit suite
 ./gradlew :app:jacocoTestReport                     # HTML coverage → app/build/reports/jacoco/
