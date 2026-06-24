@@ -15,17 +15,44 @@ android {
         applicationId = "com.xiddoc.playintegrityalert"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // Version is injected by the release workflow (autobumped from the latest
+        // git tag); the literals below are the local-build fallback.
+        versionCode = (project.findProperty("VERSION_CODE") as String?)?.toInt() ?: 1
+        versionName = (project.findProperty("VERSION_NAME") as String?) ?: "1.0"
+    }
+
+    signingConfigs {
+        // Release signing is supplied by CI via environment variables (the keystore
+        // itself is decoded from a secret). When they're absent — local builds, or CI
+        // without the signing secrets — the release build falls back to the debug key
+        // (see buildTypes.release) so it still produces an installable APK.
+        create("release") {
+            val storeFilePath = System.getenv("PIA_KEYSTORE_FILE")
+            if (storeFilePath != null) {
+                storeFile = file(storeFilePath)
+                storePassword = System.getenv("PIA_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("PIA_KEY_ALIAS")
+                keyPassword = System.getenv("PIA_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 full-mode: shrink + obfuscate code and strip unused resources. The
+            // Xposed entry points and the reflectively-overwritten isModuleActivated()
+            // are preserved by proguard-rules.pro.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = if (System.getenv("PIA_KEYSTORE_FILE") != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
