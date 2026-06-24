@@ -1,95 +1,141 @@
-## Continuous integration
+# CLAUDE.md
 
-CI is split into two GitHub Actions workflows.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-### `build.yml` — the gate (every push / PR)
+## What this is
 
-Builds the module with Gradle, runs the unit suite behind a **100% coverage
-gate** (line + branch, every hand-written class), runs Android lint, and uploads
-the debug APK as a build artifact. Any coverage regression fails the build.
+PIAlert is an Xposed / LSPosed module that **notifies you the moment an app asks
+for a Play Integrity verdict**. It hooks the Play Store (Finsky) process only,
+reads the requesting app's package out of the integrity-request `Bundle`, and —
+if that package is on the user's watch-list — fires a notification and records
+the detection. It only **observes**; it never alters the verdict.
 
-### Tests & coverage
+## Commands
 
-The detection logic is verified by a host-side JVM suite (JUnit + Robolectric +
-MockK — no device or emulator needed):
+Standard Gradle Android build (JDK 17 + Android SDK; `compileSdk`/`targetSdk` 35,
+`minSdk` 24):
 
 ```bash
-./gradlew :app:testDebugUnitTest                  # run the suite
-./gradlew :app:jacocoTestReport                   # HTML report → app/build/reports/jacoco/…
-./gradlew :app:jacocoTestCoverageVerification     # enforce 100% line + branch
+./gradlew :app:assembleDebug                       # debug APK → app/build/outputs/apk/debug/
+./gradlew :app:lintDebug                            # Android lint
+./gradlew :app:testDebugUnitTest                    # run the JVM unit suite
+./gradlew :app:jacocoTestReport                     # HTML coverage → app/build/reports/jacoco/
+./gradlew :app:jacocoTestCoverageVerification       # enforce 100% line + branch (the gate)
+./gradlew check                                      # runs tests + the coverage gate
 ```
 
-The gate enforces **100% line and branch coverage of every hand-written class**
-(only generated code — `R`, `BuildConfig`, `Manifest` — is excluded). That spans
-the safety-critical logic (the request/response heuristic and caller extraction in
-`IntegrityRequestInspector`, the per-caller debounce in `AlertThrottle`, the
-watch-list decision in `WatchList`, config read/fallback in `Config`, detection
-serialization in `DetectionStore`, the broadcast bridge in `Notifier`, the alert
-receiver in `DetectionReceiver`) *and* the framework wiring — the Xposed
-entry/hook (`XposedEntry`, `IntegrityServiceHook`), the `XSharedPreferences`
-binding (`XSharedConfigSource`), and the UI Activities.
+Run a single test class or method:
 
-To run the hook code on a plain JVM, the suite provides small **functional fakes
-of the Xposed API** (under `src/test/java/de/robv/...` and `android.app.AndroidAppHelper`)
-in place of the published `compileOnly` stub jar, whose method bodies throw. A few
-behaviour-preserving seams (an injectable clock/throttle, a swappable watch-list
-`Source`, and a swappable background runner) keep the time- and thread-dependent
-paths deterministic.
+```bash
+./gradlew :app:testDebugUnitTest --tests "com.xiddoc.playintegrityalert.IntegrityRequestInspectorTest"
+./gradlew :app:testDebugUnitTest --tests "*.AlertThrottleTest.debounces*"
+```
 
-### `e2e.yml` — real LSPosed boot (gated)
+## Coverage gate — non-negotiable
 
-Uses [**Xiddoc/Beetroot**](https://github.com/Xiddoc/Beetroot) to prove the
-module actually loads under a *real* LSPosed framework:
+The build enforces **100% line and branch coverage of every hand-written class**;
+only generated code (`R`, `BuildConfig`, `Manifest`) is excluded (see
+`coverageExclusions` in `app/build.gradle.kts`). Any new or changed code must come
+with tests that keep both counters at 1.0, or the build fails. This covers the
+Xposed hook wiring and the UI Activities too — not just the pure logic.
 
-1. Builds the module APK.
-2. Loads the host `binder` kernel module (Beetroot's
-   [Option A](https://github.com/Xiddoc/Beetroot/blob/master/docs/guides/running-in-ci.md)
-   path on GitHub-hosted runners).
-3. Boots a rooted **Android 14 + LSPosed (Vector)** redroid instance from
-   [`e2e/beetroot-lsposed.yaml`](e2e/beetroot-lsposed.yaml) (Vector flashed
-   declaratively as a Zygisk module).
-4. Installs the module, enables it in LSPosed's scope for a target app, reboots,
-   launches the target, and asserts the module's `PIA_MODULE_LOADED` marker
-   appears in LSPosed's module log — the same technique as Beetroot's own
-   `lsposed-hook-e2e.sh`. (Asserting a real verdict detection would additionally
-   need GApps + a Play Integrity caller; the gate proves the module loads and
-   runs under LSPosed.)
+The unit suite runs entirely on the host JVM (JUnit + Robolectric + MockK — no
+device or emulator). To make the hook code run off-device, the suite ships
+**functional fakes of the Xposed API** under `app/src/test/java/de/robv/...` and
+`android.app.AndroidAppHelper`. These replace the published
+`de.robv.android.xposed:api` jar, which is `compileOnly` in main and deliberately
+kept *off* the test classpath (its real method bodies throw). When you add a hook
+path that touches a new Xposed API, you must extend these fakes accordingly.
 
-Because real boots are slow, `e2e.yml` runs only on the **`e2e`** PR label,
-manual dispatch, or the nightly schedule — mirroring Beetroot's own e2e gating.
+## Architecture — why it's shaped this way
 
-> **Best-effort on GitHub-hosted runners.** Beetroot's CI "Option A" loads the
-> host `binder_linux` kernel module, but current GitHub-hosted runner kernels no
-> longer ship it, so the boot can't come up on the default runner. The job is
-> marked `continue-on-error` (informational, never blocks the PR) until the
-> binderless VM backend is wired up. `build.yml` is the enforcing gate.
+The Play Integrity client libraries don't compute a verdict in-process; they hand
+the request to **Google Play Store** (`com.android.vending`, "Finsky"), and the
+caller's package travels *inside* that request. So the module injects into the
+**Play Store process only** and watches the Finsky integrity services
+(`Constants.INTEGRITY_SERVICE_CLASSES`). Hooking one process instead of every app
+is far lighter, and because the caller package is in the request, that one process
+still sees every app's request.
+
+Runtime data flow (request → notification):
+
+```
+XposedEntry (loads only in com.android.vending)
+  └─ IntegrityServiceHook        hooks the Finsky integrity service methods
+       └─ IntegrityRequestInspector   PURE: is this a request? whose package?
+            └─ WatchList (XSharedConfigSource)   is that package watched?
+                 └─ AlertThrottle    per-caller debounce
+                      └─ Notifier    explicit broadcast → our app's process
+                           └─ DetectionReceiver   raises notification + DetectionStore
+```
+
+Key design seams to respect:
+
+- **`IntegrityRequestInspector` is pure** — no Xposed dependency. The
+  security-critical heuristics (request-vs-response discrimination via `token`/
+  `error` keys, and caller extraction via `Constants.CALLER_PACKAGE_KEYS` plus a
+  package-shaped-string fallback) live here precisely so they're fully JVM-testable.
+  Keep new detection logic here, not in the hook.
+- **Cross-process config** — the watch-list is written app-side by `Config` into
+  world-readable prefs and read inside the Play Store process via
+  `XSharedConfigSource` (backed by `XSharedPreferences`), LSPosed's supported
+  channel. It **fails safe**: if prefs can't be read, it watches all apps rather
+  than going silent. `WatchList` reads through a swappable `Source` for testing.
+- **The notification is raised by our app, not Finsky** — the hook sends an
+  explicit, stopped-package-safe broadcast (`Constants.ACTION_DETECTED`) to
+  `DetectionReceiver`, so the alert always carries our icon, channel, and
+  `POST_NOTIFICATIONS` permission, independent of the Play Store process.
+- **Injectable seams for determinism** — an injectable clock/throttle
+  (`AlertThrottle`), the swappable watch-list `Source`, and a swappable background
+  runner keep the time- and thread-dependent paths testable.
+- **`Constants.LOG_*` markers** (`PIA_MODULE_LOADED`, `PIA_HOOK_INSTALLED`,
+  `PIA_DETECTED`) are logged through `XposedBridge` so LSPosed logs and the e2e
+  job can assert behaviour — don't rename them without updating `e2e.yml` /
+  `scripts/`.
+
+## Continuous integration
+
+Two workflows under `.github/workflows/`:
+
+- **`build.yml` — the gate (every push / PR).** Gradle build + the unit suite
+  behind the 100% coverage gate + Android lint + uploads the debug APK. This is
+  the enforcing gate.
+- **`e2e.yml` — real LSPosed boot (gated).** Uses
+  [Xiddoc/Beetroot](https://github.com/Xiddoc/Beetroot) to boot a rooted
+  Android 14 + LSPosed (Vector) instance (`e2e/beetroot-lsposed.yaml`), installs
+  the module, and asserts the `PIA_MODULE_LOADED` marker appears in LSPosed's
+  log. Runs only on the **`e2e`** PR label, manual dispatch, or nightly schedule.
+  It's `continue-on-error` (informational) because current GitHub-hosted runner
+  kernels no longer ship the `binder_linux` module Beetroot's "Option A" needs.
 
 ## Project layout
 
 ```
 app/src/main/java/com/xiddoc/playintegrityalert/
-  XposedEntry.kt             # module entry; installs the hook in the Play Store process
-  IntegrityServiceHook.kt    # hooks Finsky integrity services; thin Xposed wiring
-  IntegrityRequestInspector.kt # pure request/response heuristic + caller extraction
-  AlertThrottle.kt           # per-caller debounce (injectable clock)
-  WatchList.kt               # watch-list decision; reads via a swappable Source
-  XSharedConfigSource.kt     # default Source backed by XSharedPreferences
-  Config.kt                  # app-side watch-list reader/writer (world-readable prefs)
-  Notifier.kt                # bridges a detection to our app via broadcast
-  DetectionReceiver.kt       # raises the notification + records history
-  DetectionStore.kt          # persistent ring buffer of recent detections
-  MainActivity.kt            # status + watch-all toggle + history + test button
-  AppPickerActivity.kt       # per-app watch-list picker
-  AlertApp.kt                # notification channel
-app/src/test/java/com/xiddoc/playintegrityalert/  # JVM unit suite (100% gate)
-app/src/main/assets/xposed_init   # names the entry class (classic Xposed contract)
-scripts/                # e2e driver + boot-wait helper
-e2e/beetroot-lsposed.yaml         # Beetroot instance config (Android 14 + Vector)
-.github/workflows/      # build.yml (gate) + e2e.yml (Beetroot)
+  XposedEntry.kt                # module entry; installs the hook in the Play Store process
+  IntegrityServiceHook.kt       # hooks Finsky integrity services; thin Xposed wiring
+  IntegrityRequestInspector.kt  # pure request/response heuristic + caller extraction
+  AlertThrottle.kt              # per-caller debounce (injectable clock)
+  WatchList.kt                  # watch-list decision; reads via a swappable Source
+  XSharedConfigSource.kt        # default Source backed by XSharedPreferences
+  Config.kt                     # app-side watch-list reader/writer (world-readable prefs)
+  Notifier.kt                   # bridges a detection to our app via broadcast
+  DetectionReceiver.kt          # raises the notification + records history
+  DetectionStore.kt             # persistent ring buffer of recent detections
+  Constants.kt                  # shared package/key/marker constants
+  MainActivity.kt               # status + watch-all toggle + history + test button
+  AppPickerActivity.kt          # per-app watch-list picker
+  AlertApp.kt                   # notification channel
+app/src/test/java/com/xiddoc/playintegrityalert/   # JVM unit suite (100% gate)
+app/src/test/java/de/robv/... , android/app/AndroidAppHelper.java  # Xposed API fakes
+app/src/main/assets/xposed_init    # names the entry class (classic Xposed contract)
+scripts/                           # e2e driver + boot-wait helper
+e2e/beetroot-lsposed.yaml          # Beetroot instance config (Android 14 + Vector)
 ```
 
 ## Limitations
 
 - Detection runs in the Play Store process, so Play Store must be in the module's
-  scope. Real verdict requests require Google Play services to be present.
-- This module only **observes** — it never alters the verdict.
+  scope, and real verdict requests require Google Play services present.
+- The module only observes — it never alters the verdict.
+```
