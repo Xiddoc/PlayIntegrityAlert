@@ -13,9 +13,26 @@ object Constants {
 
     /** Broadcast from the Finsky-hosted hook to our app, which raises the alert. */
     const val ACTION_DETECTED = "com.xiddoc.playintegrityalert.action.INTEGRITY_DETECTED"
+
+    /**
+     * Heartbeat broadcast the hook fires (from the Play Store process) the first
+     * time a Play Integrity request runs through the hook. Our app records the
+     * timestamp so the UI can prove the hook is live inside Play Store — a check
+     * that does not depend on our own app being in the module's scope (it can't be;
+     * LSPosed won't let a module scope itself).
+     */
+    const val ACTION_HOOK_ALIVE = "com.xiddoc.playintegrityalert.action.HOOK_ALIVE"
+
     const val EXTRA_PACKAGE = "package"
     const val EXTRA_DETAIL = "detail"
     const val EXTRA_TIMESTAMP = "timestamp"
+
+    /**
+     * Marks a detection broadcast as coming from the real Play Store hook (vs. the
+     * in-app "send test notification" button), so only genuine hook traffic is
+     * allowed to refresh the "watching" heartbeat.
+     */
+    const val EXTRA_FROM_HOOK = "from_hook"
 
     /** Markers logged through XposedBridge so LSPosed logs (and CI) can assert behaviour. */
     const val LOG_MODULE_LOADED = "PIA_MODULE_LOADED"
@@ -41,4 +58,7 @@ object Constants {
     const val PREFS_CONFIG = "config"
     const val KEY_WATCH_ALL = "watch_all"
     const val KEY_WATCHED = "watched"
+
+    /** Last time the hook was confirmed alive in the Play Store process (epoch millis). */
+    const val KEY_HOOK_SEEN_AT = "hook_seen_at"
 }

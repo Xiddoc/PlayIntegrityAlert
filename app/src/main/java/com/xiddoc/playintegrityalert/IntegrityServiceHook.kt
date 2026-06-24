@@ -24,6 +24,9 @@ object IntegrityServiceHook {
 
     internal var throttle = AlertThrottle()
 
+    /** Whether we've already told the app the hook is alive (once per process). */
+    internal var reportedAlive = false
+
     fun install(classLoader: ClassLoader) {
         val callback = object : XC_MethodHook() {
             override fun beforeHookedMethod(param: MethodHookParam) {
@@ -46,15 +49,26 @@ object IntegrityServiceHook {
     }
 
     internal fun onIntegrityRequest(caller: String, serviceObject: Any?) {
+        // The service object is itself a Context; fall back to the app context.
+        val context = serviceObject as? Context ?: AndroidAppHelper.currentApplication()
+
+        // A request reaching us proves the hook is live in Play Store: tell the app
+        // once so its status can read "watching" without our app needing scope.
+        reportAliveOnce(context)
+
         if (!WatchList.isWatched(caller)) return
         if (!throttle.allow(caller)) return
 
         XposedBridge.log("[${Constants.TAG}] ${Constants.LOG_DETECTED} pkg=$caller")
 
-        // The service object is itself a Context; fall back to the app context.
-        val context = serviceObject as? Context ?: AndroidAppHelper.currentApplication()
         if (context != null) {
             Notifier.notifyDetection(context, caller, "Play Integrity verdict requested")
         }
+    }
+
+    private fun reportAliveOnce(context: Context?) {
+        if (reportedAlive || context == null) return
+        reportedAlive = true
+        Notifier.reportHookAlive(context)
     }
 }

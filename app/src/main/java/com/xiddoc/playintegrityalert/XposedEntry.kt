@@ -14,9 +14,11 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage
  * the requesting app's package out of the request — so one injected process sees
  * every app's Play Integrity call. The user picks *which* of those apps to be
  * alerted about in the app UI (see [WatchList]). The module's own package is
- * special-cased to flip the in-app "module active" indicator.
+ * special-cased to flip the in-app "module loaded" indicator.
  *
- * Scope it to Play Store (and, optionally, this app for the status check).
+ * Scope it to Play Store. Our own app doesn't need ticking — LSPosed can't scope a
+ * module to itself via the UI, but it auto-scopes a legacy module to itself, which
+ * is when [markSelfActivated] runs.
  */
 @Suppress("unused")
 class XposedEntry : IXposedHookLoadPackage {

@@ -55,7 +55,9 @@
         <meta-data
             android:name="xposedminversion"
             android:value="102" />
-        <!-- Suggested scope: Play Store (hosts the integrity service) + this app. -->
+        <!-- Suggested scope: just Play Store (hosts the integrity service). LSPosed
+             auto-scopes a legacy module to itself, and won't let you tick your own
+             module, so this app is intentionally not listed. -->
         <meta-data
             android:name="xposedscope"
             android:resource="@array/xposed_scope" />

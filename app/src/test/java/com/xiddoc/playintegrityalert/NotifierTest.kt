@@ -47,6 +47,26 @@ class NotifierTest {
         )
         assertTrue(intent.getLongExtra(Constants.EXTRA_TIMESTAMP, 0L) > 0L)
         assertTrue(intent.flags and Intent.FLAG_INCLUDE_STOPPED_PACKAGES != 0)
+        // Marks this as real hook traffic so the receiver may refresh the heartbeat.
+        assertTrue(intent.getBooleanExtra(Constants.EXTRA_FROM_HOOK, false))
+    }
+
+    @Test
+    fun reportHookAliveSendsExplicitHeartbeatToOurReceiver() {
+        val appContext = mockk<Context>()
+        val context = mockk<Context>()
+        every { context.applicationContext } returns appContext
+        val sent = slot<Intent>()
+        every { appContext.sendBroadcast(capture(sent)) } just Runs
+
+        Notifier.reportHookAlive(context)
+
+        val intent = sent.captured
+        assertEquals(Constants.ACTION_HOOK_ALIVE, intent.action)
+        assertEquals(Constants.OWN_PACKAGE, intent.component?.packageName)
+        assertEquals("${Constants.OWN_PACKAGE}.DetectionReceiver", intent.component?.className)
+        assertTrue(intent.getLongExtra(Constants.EXTRA_TIMESTAMP, 0L) > 0L)
+        assertTrue(intent.flags and Intent.FLAG_INCLUDE_STOPPED_PACKAGES != 0)
     }
 
     @Test

@@ -38,6 +38,13 @@ class ConfigTest {
     }
 
     @Test
+    fun hookSeenAtDefaultsToZeroAndRoundTrips() {
+        assertEquals(0L, Config.hookSeenAt(context))
+        Config.setHookSeenAt(context, 1_700_000_000_000L)
+        assertEquals(1_700_000_000_000L, Config.hookSeenAt(context))
+    }
+
+    @Test
     fun fallsBackToPrivateModeWhenWorldReadableUnsupported() {
         val realPrivate = context.getSharedPreferences("config_fallback", Context.MODE_PRIVATE)
         val ctx = mockk<Context>()

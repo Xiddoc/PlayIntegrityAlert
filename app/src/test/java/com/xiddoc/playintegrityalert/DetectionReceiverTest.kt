@@ -30,10 +30,12 @@ class DetectionReceiverTest {
         packageName: String? = "com.caller.app",
         detail: String? = "verdict requested",
         timestamp: Long? = 123L,
+        fromHook: Boolean = false,
     ) = Intent(Constants.ACTION_DETECTED).apply {
         packageName?.let { putExtra(Constants.EXTRA_PACKAGE, it) }
         detail?.let { putExtra(Constants.EXTRA_DETAIL, it) }
         timestamp?.let { putExtra(Constants.EXTRA_TIMESTAMP, it) }
+        if (fromHook) putExtra(Constants.EXTRA_FROM_HOOK, true)
     }
 
     @Test
@@ -41,6 +43,46 @@ class DetectionReceiverTest {
         receiver.onReceive(app, Intent("com.example.SOMETHING_ELSE"))
         assertTrue(DetectionStore.list(app).isEmpty())
         assertEquals(0, postedCount())
+        assertEquals(0L, com.xiddoc.playintegrityalert.Config.hookSeenAt(app))
+    }
+
+    @Test
+    fun hookAliveActionRecordsHeartbeatWithoutDetectionOrNotification() {
+        receiver.onReceive(
+            app,
+            Intent(Constants.ACTION_HOOK_ALIVE).putExtra(Constants.EXTRA_TIMESTAMP, 555L),
+        )
+
+        assertEquals(555L, com.xiddoc.playintegrityalert.Config.hookSeenAt(app))
+        assertTrue(DetectionStore.list(app).isEmpty()) // heartbeat is not a detection
+        assertEquals(0, postedCount())
+    }
+
+    @Test
+    fun hookAliveActionFallsBackToNowWhenTimestampMissing() {
+        receiver.onReceive(app, Intent(Constants.ACTION_HOOK_ALIVE))
+        assertTrue(com.xiddoc.playintegrityalert.Config.hookSeenAt(app) > 0L)
+    }
+
+    @Test
+    @Config(sdk = [33])
+    fun realHookDetectionRefreshesTheHeartbeat() {
+        shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        receiver.onReceive(app, detectionIntent(timestamp = 4242L, fromHook = true))
+        assertEquals(4242L, com.xiddoc.playintegrityalert.Config.hookSeenAt(app))
+    }
+
+    @Test
+    @Config(sdk = [33])
+    fun localTestDetectionDoesNotRefreshTheHeartbeat() {
+        // The in-app "test notification" broadcast has no from-hook flag, so it must
+        // record/notify but NOT light up the authoritative "watching" heartbeat.
+        shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        receiver.onReceive(app, detectionIntent(timestamp = 4242L)) // fromHook = false
+
+        assertEquals(0L, com.xiddoc.playintegrityalert.Config.hookSeenAt(app))
+        assertTrue(DetectionStore.list(app).isNotEmpty()) // still recorded
+        assertEquals(1, postedCount())                    // still notified
     }
 
     @Test

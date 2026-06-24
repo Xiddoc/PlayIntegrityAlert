@@ -25,6 +25,13 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/instructions"
+            android:paddingBottom="12dp" />
+
+        <Button
+            android:id="@+id/btn_restart_play_store"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_restart_play_store"
             android:paddingBottom="16dp" />
 
         <androidx.appcompat.widget.SwitchCompat
