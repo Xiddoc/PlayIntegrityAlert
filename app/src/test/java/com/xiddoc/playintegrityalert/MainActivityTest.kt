@@ -11,6 +11,7 @@ import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,6 +24,24 @@ import org.robolectric.annotation.Config as RoboConfig
 class MainActivityTest {
 
     private val app: Application get() = ApplicationProvider.getApplicationContext()
+
+    /** A [RootShell] whose availability and exec result are fixed per test. */
+    private class FakeRootShell(
+        private val available: Boolean,
+        private val execResult: Boolean = false,
+    ) : RootShell {
+        var execCalled = false
+        override fun isAvailable() = available
+        override fun exec(vararg commands: String): Boolean {
+            execCalled = true
+            return execResult
+        }
+    }
+
+    @org.junit.After
+    fun restoreRootShell() {
+        MainActivity.rootShell = LibsuRootShell
+    }
 
     @Test
     @RoboConfig(sdk = [33])
@@ -69,7 +88,37 @@ class MainActivityTest {
 
     @Test
     @RoboConfig(sdk = [33])
-    fun restartPlayStoreButtonOpensPlayStoreAppInfo() {
+    fun restartPlayStoreFallsBackToAppInfoWithoutRoot() {
+        MainActivity.rootShell = FakeRootShell(available = false)
+        shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+
+        activity.findViewById<Button>(R.id.btn_restart_play_store).performClick()
+
+        val started = shadowOf(activity).nextStartedActivity
+        assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, started.action)
+        assertEquals("package:${Constants.VENDING_PACKAGE}", started.data.toString())
+    }
+
+    @Test
+    @RoboConfig(sdk = [33])
+    fun restartPlayStoreForceStopsWithRoot() {
+        val shell = FakeRootShell(available = true, execResult = true)
+        MainActivity.rootShell = shell
+        shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+
+        activity.findViewById<Button>(R.id.btn_restart_play_store).performClick()
+
+        // Root force-stop succeeded: we don't open App info at all.
+        assertTrue(shell.execCalled)
+        assertNull(shadowOf(activity).nextStartedActivity)
+    }
+
+    @Test
+    @RoboConfig(sdk = [33])
+    fun restartPlayStoreFallsBackWhenRootForceStopFails() {
+        MainActivity.rootShell = FakeRootShell(available = true, execResult = false)
         shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
 

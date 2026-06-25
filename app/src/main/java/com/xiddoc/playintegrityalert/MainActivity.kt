@@ -82,12 +82,19 @@ class MainActivity : AppCompatActivity() {
         DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(epochMillis))
 
     /**
-     * Opens Play Store's App info screen so the user can Force stop it. The module
-     * only loads into Play Store when its process (re)starts, so a restart is needed
-     * after enabling the module or changing its scope. A normal app can't force-stop
-     * another, so we send the user to the one screen that always can.
+     * Restarts Play Store so the module (re)loads into its process — needed after
+     * enabling the module or changing its scope. With root we force-stop it directly
+     * via [rootShell]; the next launch reloads the hook. Without root (a normal app
+     * can't force-stop another) we fall back to Play Store's App info screen so the
+     * user can tap *Force stop* themselves.
      */
     private fun restartPlayStore() {
+        if (rootShell.isAvailable() &&
+            rootShell.exec("am force-stop ${Constants.VENDING_PACKAGE}")
+        ) {
+            Toast.makeText(this, R.string.restart_play_store_done, Toast.LENGTH_SHORT).show()
+            return
+        }
         startActivity(
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
                 .setData(Uri.fromParts("package", Constants.VENDING_PACKAGE, null))
@@ -125,4 +132,13 @@ class MainActivity : AppCompatActivity() {
      */
     @Keep
     fun isModuleActivated(): Boolean = false
+
+    companion object {
+        /**
+         * Root shell used to force-stop Play Store. Swappable so unit tests can drive
+         * both the rooted and unrooted paths without spawning a real shell; defaults
+         * to the libsu-backed [LibsuRootShell].
+         */
+        internal var rootShell: RootShell = LibsuRootShell
+    }
 }

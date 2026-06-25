@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Multi-choice row for the app picker. ArrayAdapter binds the package/label
+     string straight onto this CheckedTextView. -->
+<CheckedTextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:checkMark="?android:attr/listChoiceIndicatorMultiple"
+    android:gravity="center_vertical"
+    android:lineSpacingMultiplier="1.1"
+    android:minHeight="60dp"
+    android:paddingHorizontal="12dp"
+    android:textColor="@color/text_primary"
+    android:textSize="15sp" />

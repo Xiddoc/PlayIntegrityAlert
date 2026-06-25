@@ -13,6 +13,8 @@ dependencyResolutionManagement {
         mavenCentral()
         // Xposed API artifacts (de.robv.android.xposed:api).
         maven("https://api.xposed.info/")
+        // libsu (root shell) artifacts (com.github.topjohnwu.libsu).
+        maven("https://jitpack.io")
     }
 }
 
