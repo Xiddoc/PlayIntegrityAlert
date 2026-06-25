@@ -18,6 +18,47 @@ This module behaves just like the [GrapheneOS Play Integrity alert](https://x.co
 
 Grab the latest signed APK from the [**Releases**](https://github.com/Xiddoc/PlayIntegrityAlert/releases/latest) page — then enable it in LSPosed (see [Usage](#usage)).
 
+## Usage
+
+1. Install the APK (from [Releases](https://github.com/Xiddoc/PlayIntegrityAlert/releases/latest)) and **enable Play Integrity Alert** in LSPosed.
+2. Open the module's **Scope** and make sure **Google Play Store** (`com.android.vending`)
+   is ticked — that's the only app you need.
+   - LSPosed **pre-selects** the module's recommended scope by default when you
+     enable it, and that scope is now just Google Play Store, so it's usually
+     already ticked. If it isn't — e.g. you enabled the module on an older build, or
+     changed the scope yourself — just tick Google Play Store manually.
+   - You **can't** tick *Play Integrity Alert itself* — LSPosed never lets a module
+     scope itself, and earlier builds that listed this app in the recommended scope
+     could stop LSPosed pre-selecting Play Store. You don't need it: LSPosed
+     auto-scopes a *legacy* module (which this is) to its own process, and that's
+     what drives the in-app status check.
+3. **Restart Play Store** so the hook loads into it: tap **Restart Play Store** in
+   the app (it opens Play Store's *App info* — tap *Force stop* there), or reboot.
+   The module only loads into Play Store when its process (re)starts.
+4. Back in the app, keep **Watch all apps** on, or turn it off and **Choose apps to
+   watch…**.
+5. When a watched app requests a Play Integrity verdict you get a notification, and
+   the event is added to the in-app history.
+
+### Checking it's active
+
+The status line at the top of the app tells you exactly where you are:
+
+- **Module not active** — the module isn't loaded. Enable it in LSPosed.
+- **Module loaded ✓** — the module is running inside this app (so LSPosed has it
+  enabled — it auto-scopes a legacy module to itself), but Play Store hasn't made an
+  Integrity request through the hook yet. Make sure Google Play Store is ticked in
+  the scope and restart it.
+- **Watching Google Play Store ✓** — the module is loaded *and* the hook has actually
+  run inside the Play Store process. That second signal (a one-time **heartbeat** the
+  hook sends on its first real Integrity request) is the proof the Play Store hook is
+  live, and it doesn't depend on this app being ticked in any scope. Disable the
+  module later and the status drops back — it won't show a stale tick.
+
+**Send test notification** only exercises the notification path inside this app; it
+does *not* touch the heartbeat or prove the Play Store hook is live. The
+**Watching…** status does.
+
 ## How it works
 
 The Play Integrity / Play Core client libraries don't compute a verdict
@@ -59,22 +100,8 @@ it watches all apps rather than going silent.)
 The notification is raised by *this* app (via an explicit, stopped-package-safe
 broadcast to its receiver), so it always carries our icon, our notification
 channel, and our `POST_NOTIFICATIONS` permission — independent of the Play Store
-process.
-
-## Usage
-
-1. Install the APK (from [Releases](https://github.com/Xiddoc/PlayIntegrityAlert/releases/latest)) and enable **Play Integrity Alert** in LSPosed.
-2. In the module's **Scope**, tick **Google Play Store**. Also tick **Play
-   Integrity Alert itself** — the in-app status then reads *Module active ✓*.
-   (LSPosed suggests exactly these via the module's default scope.)
-3. Reboot (or force-stop Play Store) so the hook loads into it.
-4. In the app, keep **Watch all apps** on, or turn it off and **Choose apps to
-   watch…**.
-5. When a watched app requests a Play Integrity verdict you get a notification,
-   and the event is added to the in-app history.
-
-Use **Send test notification** in the app to verify the notification path end to
-end.
+process. The same broadcast channel carries a one-time **heartbeat** the moment the
+hook first runs inside Play Store, which is what lights up the *Watching…* status.
 
 ## License
 

@@ -16,13 +16,34 @@ import androidx.core.app.NotificationManagerCompat
 class DetectionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Constants.ACTION_DETECTED) return
+        // Plain == comparisons (not a `when` on the String, which compiles to a
+        // hashCode switch with an unreachable equals branch the coverage gate flags).
+        if (intent.action == Constants.ACTION_HOOK_ALIVE) {
+            markHookSeen(context, intent)
+        } else if (intent.action == Constants.ACTION_DETECTED) {
+            handleDetection(context, intent)
+        }
+    }
 
+    /** Record that the hook pinged us from the Play Store process. */
+    private fun markHookSeen(context: Context, intent: Intent) {
+        Config.setHookSeenAt(
+            context,
+            intent.getLongExtra(Constants.EXTRA_TIMESTAMP, System.currentTimeMillis()),
+        )
+    }
+
+    private fun handleDetection(context: Context, intent: Intent) {
         val packageName = intent.getStringExtra(Constants.EXTRA_PACKAGE) ?: return
         val detail = intent.getStringExtra(Constants.EXTRA_DETAIL).orEmpty()
         val timestamp = intent.getLongExtra(Constants.EXTRA_TIMESTAMP, System.currentTimeMillis())
         val label = labelFor(context, packageName)
 
+        // A real hook detection also proves the hook is live, so keep the heartbeat
+        // current — but the in-app test button must NOT flip the status to "watching".
+        if (intent.getBooleanExtra(Constants.EXTRA_FROM_HOOK, false)) {
+            Config.setHookSeenAt(context, timestamp)
+        }
         DetectionStore.add(context, Detection(timestamp, packageName, label, detail))
         postNotification(context, packageName, label)
     }

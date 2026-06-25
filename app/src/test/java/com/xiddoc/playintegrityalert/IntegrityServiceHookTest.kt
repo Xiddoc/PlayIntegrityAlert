@@ -15,6 +15,7 @@ import io.mockk.unmockkAll
 import io.mockk.verify
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -35,14 +36,17 @@ class IntegrityServiceHookTest {
         originalThrottle = IntegrityServiceHook.throttle
         WatchList.source = fakeSource(watchAll = true)
         IntegrityServiceHook.throttle = AlertThrottle(windowMs = 1_000L, clock = { 0L })
+        IntegrityServiceHook.reportedAlive = false
         mockkObject(Notifier)
         every { Notifier.notifyDetection(any(), any(), any()) } just Runs
+        every { Notifier.reportHookAlive(any()) } just Runs
     }
 
     @After
     fun tearDown() {
         WatchList.source = originalSource
         IntegrityServiceHook.throttle = originalThrottle
+        IntegrityServiceHook.reportedAlive = false
         unmockkAll()
         XposedBridge.reset()
         AndroidAppHelper.reset()
@@ -169,5 +173,28 @@ class IntegrityServiceHookTest {
         AndroidAppHelper.currentApplication = null
         IntegrityServiceHook.onIntegrityRequest("com.x", serviceObject = null)
         verify(exactly = 0) { Notifier.notifyDetection(any(), any(), any()) }
+    }
+
+    // ---- hook-alive heartbeat ----
+
+    @Test
+    fun reportsHookAliveOnceEvenAcrossManyRequests() {
+        // Even an unwatched caller proves the hook is live; report it exactly once.
+        WatchList.source = fakeSource(watchAll = false, watched = emptySet())
+        val context = mockk<Context>(relaxed = true)
+
+        assertFalse(IntegrityServiceHook.reportedAlive)
+        IntegrityServiceHook.onIntegrityRequest("com.x", context)
+        assertTrue(IntegrityServiceHook.reportedAlive)
+        IntegrityServiceHook.onIntegrityRequest("com.y", context)
+
+        verify(exactly = 1) { Notifier.reportHookAlive(context) }
+    }
+
+    @Test
+    fun doesNotReportHookAliveWithoutAContext() {
+        AndroidAppHelper.currentApplication = null
+        IntegrityServiceHook.onIntegrityRequest("com.x", serviceObject = null)
+        verify(exactly = 0) { Notifier.reportHookAlive(any()) }
     }
 }

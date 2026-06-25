@@ -3,6 +3,7 @@ package com.xiddoc.playintegrityalert
 import android.Manifest
 import android.app.Application
 import android.os.Build
+import android.provider.Settings
 import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.widget.SwitchCompat
@@ -59,11 +60,36 @@ class MainActivityTest {
         activity.findViewById<Button>(R.id.btn_clear).performClick()
         assertTrue(DetectionStore.list(activity).isEmpty())
 
-        // Status reflects the (false) module-active state.
+        // Status reflects the (false) module-active state with no hook heartbeat yet.
         assertEquals(
             activity.getString(R.string.status_inactive),
             activity.findViewById<TextView>(R.id.status).text,
         )
+    }
+
+    @Test
+    @RoboConfig(sdk = [33])
+    fun restartPlayStoreButtonOpensPlayStoreAppInfo() {
+        shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+
+        activity.findViewById<Button>(R.id.btn_restart_play_store).performClick()
+
+        val started = shadowOf(activity).nextStartedActivity
+        assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, started.action)
+        assertEquals("package:${Constants.VENDING_PACKAGE}", started.data.toString())
+    }
+
+    @Test
+    @RoboConfig(sdk = [33])
+    fun statusStaysInactiveWhenModuleNotLoadedDespiteStaleHeartbeat() {
+        // A leftover heartbeat must NOT show "watching" once the module is no longer
+        // loaded (isModuleActivated() is false off-device), so the status reads inactive.
+        Config.setHookSeenAt(app, 1_700_000_000_000L)
+        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+
+        val status = activity.findViewById<TextView>(R.id.status).text.toString()
+        assertEquals(activity.getString(R.string.status_inactive), status)
     }
 
     @Test
@@ -106,9 +132,15 @@ class MainActivityTest {
 
     @Test
     @RoboConfig(sdk = [33])
-    fun statusTextReflectsModuleActiveState() {
+    fun statusTextCoversAllThreeStates() {
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
-        assertEquals(activity.getString(R.string.status_active), activity.statusText(true))
-        assertEquals(activity.getString(R.string.status_inactive), activity.statusText(false))
+
+        // "Watching" needs BOTH the module loaded now AND a hook heartbeat.
+        assertTrue(activity.statusText(true, 1_700_000_000_000L).contains("Watching Google Play Store"))
+        // Module loaded into our process, but Play Store not yet hit.
+        assertEquals(activity.getString(R.string.status_loaded), activity.statusText(true, 0L))
+        // Not loaded -> inactive, even with a stale heartbeat from a previous run.
+        assertEquals(activity.getString(R.string.status_inactive), activity.statusText(false, 0L))
+        assertEquals(activity.getString(R.string.status_inactive), activity.statusText(false, 1_700_000_000_000L))
     }
 }

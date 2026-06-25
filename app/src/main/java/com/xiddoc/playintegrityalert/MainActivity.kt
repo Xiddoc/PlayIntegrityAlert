@@ -4,10 +4,13 @@ import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
@@ -31,6 +34,8 @@ class MainActivity : AppCompatActivity() {
         }
         chooseButton.setOnClickListener { startActivity(Intent(this, AppPickerActivity::class.java)) }
 
+        findViewById<Button>(R.id.btn_restart_play_store).setOnClickListener { restartPlayStore() }
+
         findViewById<Button>(R.id.btn_test).setOnClickListener {
             // Self-broadcast a fake event so the notification path can be verified.
             sendBroadcast(
@@ -51,13 +56,45 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        findViewById<TextView>(R.id.status).text = statusText(isModuleActivated())
+        findViewById<TextView>(R.id.status).text =
+            statusText(isModuleActivated(), Config.hookSeenAt(this))
         renderHistory()
     }
 
-    /** Status label for whether the Xposed module is active; split out for testing. */
-    internal fun statusText(active: Boolean): String =
-        if (active) getString(R.string.status_active) else getString(R.string.status_inactive)
+    /**
+     * Status label, split out for testing. Three states:
+     *  - module loaded *and* the hook has run inside Play Store ([hookSeenAt] > 0):
+     *    we're watching. The heartbeat is what proves the Play Store hook is live —
+     *    a signal that doesn't depend on our app being in any scope.
+     *  - module loaded only: enabled (LSPosed auto-scopes a legacy module to
+     *    itself), but Play Store hasn't been hit through the hook yet.
+     *  - otherwise: not active. Gating "watching" on [moduleLoaded] means the status
+     *    correctly drops back here if the module is later disabled, rather than
+     *    showing a stale "watching" from an old heartbeat.
+     */
+    internal fun statusText(moduleLoaded: Boolean, hookSeenAt: Long): String = when {
+        moduleLoaded && hookSeenAt > 0L -> getString(R.string.status_watching, formatTime(hookSeenAt))
+        moduleLoaded -> getString(R.string.status_loaded)
+        else -> getString(R.string.status_inactive)
+    }
+
+    private fun formatTime(epochMillis: Long): String =
+        DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(epochMillis))
+
+    /**
+     * Opens Play Store's App info screen so the user can Force stop it. The module
+     * only loads into Play Store when its process (re)starts, so a restart is needed
+     * after enabling the module or changing its scope. A normal app can't force-stop
+     * another, so we send the user to the one screen that always can.
+     */
+    private fun restartPlayStore() {
+        startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                .setData(Uri.fromParts("package", Constants.VENDING_PACKAGE, null))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        Toast.makeText(this, R.string.restart_play_store_hint, Toast.LENGTH_LONG).show()
+    }
 
     private fun renderHistory() {
         val view = findViewById<TextView>(R.id.history)
@@ -80,9 +117,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Returns false in a normal process; the Xposed module rewrites this to
-     * return true when our own app is in the LSPosed scope, proving the module
-     * is loaded and active.
+     * Returns false in a normal process; the module rewrites it to return true once
+     * it's loaded into our own process. LSPosed auto-scopes a *legacy* module to
+     * itself (you can't — and needn't — tick your own module), so this flips without
+     * any manual scoping. It only proves the module is loaded here, though; the
+     * authoritative "are we watching Play Store" signal is [Config.hookSeenAt].
      */
     @Keep
     fun isModuleActivated(): Boolean = false

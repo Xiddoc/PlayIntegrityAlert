@@ -1,8 +1,11 @@
 <resources>
-    <!-- Default scope LSPosed suggests: the Play Store process hosts the integrity
-         service, and this app itself so the "module active" status can verify. -->
+    <!-- Scope LSPosed suggests when you open the module's scope screen: just the
+         Play Store process, which hosts the integrity service. We deliberately do
+         NOT list this app — LSPosed won't let you tick your own module, and it
+         auto-scopes a legacy module to itself anyway (that's what flips the
+         in-app "module loaded" status). LSPosed only *suggests* this scope; you
+         still have to tick Google Play Store yourself. -->
     <string-array name="xposed_scope">
         <item>com.android.vending</item>
-        <item>com.xiddoc.playintegrityalert</item>
     </string-array>
 </resources>

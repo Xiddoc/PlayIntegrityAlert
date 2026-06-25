@@ -22,6 +22,7 @@ class ConstantsTest {
                 Constants.TAG,
                 Constants.CHANNEL_ID,
                 Constants.ACTION_DETECTED,
+                Constants.ACTION_HOOK_ALIVE,
                 Constants.EXTRA_PACKAGE,
                 Constants.EXTRA_DETAIL,
                 Constants.EXTRA_TIMESTAMP,
@@ -30,6 +31,7 @@ class ConstantsTest {
                 Constants.LOG_DETECTED,
                 Constants.KEY_WATCH_ALL,
                 Constants.KEY_WATCHED,
+                Constants.KEY_HOOK_SEEN_AT,
             ).all { it.isNotEmpty() },
         )
     }
