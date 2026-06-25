@@ -39,7 +39,7 @@ class AppPickerActivity : AppCompatActivity() {
             runOnUiThread {
                 listView.adapter = ArrayAdapter(
                     this,
-                    android.R.layout.simple_list_item_multiple_choice,
+                    R.layout.row_app,
                     labels,
                 )
                 packages.forEachIndexed { i, pkg ->

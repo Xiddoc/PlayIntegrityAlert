@@ -82,6 +82,9 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
 
+    // Root shell (libsu) — used to force-stop Play Store so the hook reloads.
+    implementation(libs.libsu.core)
+
     // Xposed API is provided by the framework at runtime — never bundled.
     compileOnly(libs.xposed.api)
 

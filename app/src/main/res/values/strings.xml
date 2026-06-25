@@ -1,5 +1,6 @@
 <resources>
     <string name="app_name">Play Integrity Alert</string>
+    <string name="tagline">Know the instant an app checks Play Integrity.</string>
     <string name="xposed_description">Notifies you whenever an app requests a Google Play Integrity verdict. Scope it to Google Play Store.</string>
 
     <string name="channel_name">Play Integrity usage</string>
@@ -9,21 +10,23 @@
     <string name="notification_text">%1$s requested a Play Integrity verdict</string>
     <string name="notification_big_text">%1$s (%2$s) just asked Google Play for a Play Integrity verdict.</string>
 
-    <string name="status_watching">Watching Google Play Store ✓ — last Integrity request seen %1$s.</string>
-    <string name="status_loaded">Module loaded ✓ — make sure Google Play Store is ticked in the module’s scope, then restart it. Status flips to “watching” after Play Store’s next Integrity request.</string>
-    <string name="status_inactive">Module not active — enable Play Integrity Alert in LSPosed, make sure Google Play Store is ticked in its scope, then restart Play Store.</string>
+    <string name="status_watching">Watching Google Play Store ✓\nLast request seen %1$s.</string>
+    <string name="status_loaded">Module loaded ✓\nTick Google Play Store in the scope, then restart it.</string>
+    <string name="status_inactive">Module not active\nEnable it in LSPosed, scope Google Play Store, then restart it.</string>
 
-    <string name="instructions">1. Enable this module in LSPosed.\n2. In the module’s scope, make sure Google Play Store is ticked — LSPosed pre-selects it by default. Then restart Play Store (button below) or reboot. (You don’t need to tick this app — LSPosed scopes a module to itself automatically.)\n3. Below, keep “Watch all apps” on, or turn it off and choose specific apps.\nWhen a watched app requests a Play Integrity verdict, you’ll get a notification here.</string>
+    <string name="instructions">Enable in LSPosed → scope Google Play Store → Restart Play Store. If it’s hidden in the scope list, turn on “Show system apps”.</string>
 
     <string name="watch_all_label">Watch all apps</string>
-    <string name="btn_choose">Choose apps to watch…</string>
+    <string name="btn_choose">Choose apps…</string>
     <string name="btn_restart_play_store">Restart Play Store</string>
+    <string name="restart_play_store_done">Play Store restarted — the hook will reload.</string>
     <string name="restart_play_store_hint">Tap “Force stop”, then reopen Play Store so the module loads into it.</string>
     <string name="picker_title">Apps to watch</string>
+    <string name="picker_subtitle">Get alerted only for the apps you tick.</string>
 
-    <string name="history_title">Recent detections</string>
-    <string name="history_empty">No Play Integrity usage detected yet.</string>
+    <string name="history_title">Detections</string>
+    <string name="history_empty">Nothing detected yet.</string>
 
-    <string name="btn_test">Send test notification</string>
-    <string name="btn_clear">Clear history</string>
+    <string name="btn_test">Test</string>
+    <string name="btn_clear">Clear</string>
 </resources>

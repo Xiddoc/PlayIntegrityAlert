@@ -1,4 +1,17 @@
 <resources>
     <color name="brand">#4FC3F7</color>
     <color name="brand_dark">#1B2430</color>
+
+    <!-- Backdrop gradient (deep teal → slate). -->
+    <color name="bg_top">#0B1B24</color>
+    <color name="bg_mid">#13313B</color>
+    <color name="bg_bottom">#1B2A38</color>
+
+    <!-- Frosted "glass" surfaces layered over the gradient. -->
+    <color name="glass_fill">#22FFFFFF</color>
+    <color name="glass_stroke">#33FFFFFF</color>
+
+    <color name="text_primary">#F2FAFF</color>
+    <color name="text_secondary">#A9C4D4</color>
+    <color name="accent_on">#7FE3A0</color>
 </resources>

@@ -27,16 +27,21 @@ Grab the latest signed APK from the [**Releases**](https://github.com/Xiddoc/Pla
      enable it, and that scope is now just Google Play Store, so it's usually
      already ticked. If it isn't — e.g. you enabled the module on an older build, or
      changed the scope yourself — just tick Google Play Store manually.
+   - **Don't see Google Play Store in the list?** It's a *system app*, and LSPosed
+     hides system apps by default. Tap the **⋮ menu** on the scope screen and enable
+     **Show system apps** (some builds call it *Show system applications*), then
+     pull-to-refresh — Google Play Store will appear so you can tick it.
    - You **can't** tick *Play Integrity Alert itself* — LSPosed never lets a module
      scope itself, and earlier builds that listed this app in the recommended scope
      could stop LSPosed pre-selecting Play Store. You don't need it: LSPosed
      auto-scopes a *legacy* module (which this is) to its own process, and that's
      what drives the in-app status check.
 3. **Restart Play Store** so the hook loads into it: tap **Restart Play Store** in
-   the app (it opens Play Store's *App info* — tap *Force stop* there), or reboot.
-   The module only loads into Play Store when its process (re)starts.
-4. Back in the app, keep **Watch all apps** on, or turn it off and **Choose apps to
-   watch…**.
+   the app. **With root** (Magisk/KernelSU) it force-stops Play Store for you via
+   `libsu`; **without root** it opens Play Store's *App info* so you can tap *Force
+   stop* yourself. Either way, the module only loads into Play Store when its process
+   (re)starts — a reboot also works.
+4. Back in the app, keep **Watch all apps** on, or turn it off and **Choose apps…**.
 5. When a watched app requests a Play Integrity verdict you get a notification, and
    the event is added to the in-app history.
 

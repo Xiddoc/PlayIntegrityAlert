@@ -5,6 +5,7 @@ core-ktx = "1.13.1"
 appcompat = "1.7.0"
 material = "1.12.0"
 xposed-api = "82"
+libsu = "6.0.0"
 junit = "4.13.2"
 robolectric = "4.14.1"
 mockk = "1.13.13"
@@ -22,6 +23,9 @@ androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "a
 material = { module = "com.google.android.material:material", version.ref = "material" }
 # Compile-only: the LSPosed/Xposed framework provides the real implementation at runtime.
 xposed-api = { module = "de.robv.android.xposed:api", version.ref = "xposed-api" }
+
+# Root shell, used to force-stop Play Store so the hook reloads into it.
+libsu-core = { module = "com.github.topjohnwu.libsu:core", version.ref = "libsu" }
 
 # Unit-test stack: JVM-only, run on the host via Robolectric (no device/emulator).
 junit = { module = "junit:junit", version.ref = "junit" }
