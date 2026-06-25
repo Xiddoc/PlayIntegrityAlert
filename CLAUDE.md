@@ -77,6 +77,13 @@ Key design seams to respect:
   `error` keys, and caller extraction via `Constants.CALLER_PACKAGE_KEYS` plus a
   package-shaped-string fallback) live here precisely so they're fully JVM-testable.
   Keep new detection logic here, not in the hook.
+- **Two caller-attribution paths.** The Bundle heuristics above cover the *classic*
+  Play Integrity API, where the caller package rides inside the request `Bundle`.
+  The *Standard/Express* API instead hands Finsky a Parcelable with no package, so
+  `IntegrityServiceHook.callerFromBinder` falls back to the binder calling UID
+  (`Binder.getCallingUid()`, always valid inside the transaction) and resolves it to
+  a package via the Play Store process's `PackageManager` — filtering out system,
+  Play Store, and our own UID. Without this, Standard-API requests are invisible.
 - **Cross-process config** — the watch-list is written app-side by `Config` into
   world-readable prefs and read inside the Play Store process via
   `XSharedConfigSource` (backed by `XSharedPreferences`), LSPosed's supported

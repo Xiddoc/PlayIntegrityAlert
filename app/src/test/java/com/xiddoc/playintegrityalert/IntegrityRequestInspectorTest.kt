@@ -4,7 +4,9 @@ import android.os.Bundle
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -75,6 +77,22 @@ class IntegrityRequestInspectorTest {
             putString("note", "not a package")  // contains spaces -> not package-shaped
         }
         assertNull(IntegrityRequestInspector.callerPackage(arrayOf<Any?>(b)))
+    }
+
+    @Test
+    fun externalAppUidIsAnExternalCaller() {
+        assertTrue(IntegrityRequestInspector.isExternalAppCaller(callingUid = 10_042, ownUid = 10_001))
+    }
+
+    @Test
+    fun systemUidIsNotAnExternalCaller() {
+        assertFalse(IntegrityRequestInspector.isExternalAppCaller(callingUid = 1_000, ownUid = 10_001))
+    }
+
+    @Test
+    fun hostProcessUidIsNotAnExternalCaller() {
+        // Same UID as the Play Store host process — a self/internal call, not a request.
+        assertFalse(IntegrityRequestInspector.isExternalAppCaller(callingUid = 10_001, ownUid = 10_001))
     }
 
     @Test

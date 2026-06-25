@@ -3,6 +3,7 @@ package com.xiddoc.playintegrityalert
 import android.app.AndroidAppHelper
 import android.app.Application
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Bundle
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
@@ -16,11 +17,13 @@ import io.mockk.verify
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowBinder
 
 @RunWith(RobolectricTestRunner::class)
 class IntegrityServiceHookTest {
@@ -129,6 +132,86 @@ class IntegrityServiceHookTest {
         callback.callBeforeHookedMethod(param)
 
         verify(exactly = 0) { Notifier.notifyDetection(any(), any(), any()) }
+    }
+
+    // ---- callerFromBinder() (Standard/Express API: no package Bundle) ----
+
+    private val externalUid = 10_042
+
+    private fun contextWithPm(pm: PackageManager): Context =
+        mockk<Context>(relaxed = true).also { every { it.packageManager } returns pm }
+
+    @Test
+    fun callbackFallsBackToBinderCallerWhenNoPackageBundle() {
+        // A request with no caller package in the args (the Express API shape) is still
+        // attributed via the binder calling UID resolved through the PackageManager.
+        IntegrityServiceHook.install(loaderResolvingIntegrityClasses())
+        val callback = XposedBridge.lastCallback!!
+        ShadowBinder.setCallingUid(externalUid)
+        val pm = mockk<PackageManager>()
+        every { pm.getPackagesForUid(externalUid) } returns arrayOf("com.express.app")
+        val context = contextWithPm(pm)
+        val param = XC_MethodHook.MethodHookParam().apply {
+            args = arrayOf<Any?>("a parcelable request, not a bundle")
+            thisObject = context
+        }
+
+        callback.callBeforeHookedMethod(param)
+
+        verify { Notifier.notifyDetection(context, "com.express.app", any()) }
+    }
+
+    @Test
+    fun binderCallerIgnoresSystemUid() {
+        ShadowBinder.setCallingUid(1_000) // system, not a third-party app
+        assertNull(IntegrityServiceHook.callerFromBinder(mockk<Context>(relaxed = true)))
+    }
+
+    @Test
+    fun binderCallerYieldsNullWithoutAContext() {
+        ShadowBinder.setCallingUid(externalUid)
+        AndroidAppHelper.currentApplication = null
+        assertNull(IntegrityServiceHook.callerFromBinder(serviceObject = null))
+    }
+
+    @Test
+    fun binderCallerYieldsNullWhenUidResolvesToNothing() {
+        ShadowBinder.setCallingUid(externalUid)
+        val pm = mockk<PackageManager>()
+        every { pm.getPackagesForUid(externalUid) } returns null
+        assertNull(IntegrityServiceHook.callerFromBinder(contextWithPm(pm)))
+    }
+
+    @Test
+    fun binderCallerYieldsNullWhenPackageManagerThrows() {
+        ShadowBinder.setCallingUid(externalUid)
+        val pm = mockk<PackageManager>()
+        every { pm.getPackagesForUid(externalUid) } throws RuntimeException("boom")
+        assertNull(IntegrityServiceHook.callerFromBinder(contextWithPm(pm)))
+    }
+
+    @Test
+    fun binderCallerIgnoresPlayStoreItself() {
+        ShadowBinder.setCallingUid(externalUid)
+        val pm = mockk<PackageManager>()
+        every { pm.getPackagesForUid(externalUid) } returns arrayOf(Constants.VENDING_PACKAGE)
+        assertNull(IntegrityServiceHook.callerFromBinder(contextWithPm(pm)))
+    }
+
+    @Test
+    fun binderCallerIgnoresOurOwnApp() {
+        ShadowBinder.setCallingUid(externalUid)
+        val pm = mockk<PackageManager>()
+        every { pm.getPackagesForUid(externalUid) } returns arrayOf(Constants.OWN_PACKAGE)
+        assertNull(IntegrityServiceHook.callerFromBinder(contextWithPm(pm)))
+    }
+
+    @Test
+    fun binderCallerResolvesThirdPartyApp() {
+        ShadowBinder.setCallingUid(externalUid)
+        val pm = mockk<PackageManager>()
+        every { pm.getPackagesForUid(externalUid) } returns arrayOf("com.third.party")
+        assertEquals("com.third.party", IntegrityServiceHook.callerFromBinder(contextWithPm(pm)))
     }
 
     // ---- onIntegrityRequest() ----
