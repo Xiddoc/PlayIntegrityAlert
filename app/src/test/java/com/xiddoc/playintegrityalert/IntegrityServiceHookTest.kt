@@ -40,6 +40,7 @@ class IntegrityServiceHookTest {
         WatchList.source = fakeSource(watchAll = true)
         IntegrityServiceHook.throttle = AlertThrottle(windowMs = 1_000L, clock = { 0L })
         IntegrityServiceHook.reportedAlive = false
+        IntegrityServiceHook.hookedBinderClasses.clear()
         mockkObject(Notifier)
         every { Notifier.notifyDetection(any(), any(), any()) } just Runs
         every { Notifier.reportHookAlive(any()) } just Runs
@@ -50,6 +51,7 @@ class IntegrityServiceHookTest {
         WatchList.source = originalSource
         IntegrityServiceHook.throttle = originalThrottle
         IntegrityServiceHook.reportedAlive = false
+        IntegrityServiceHook.hookedBinderClasses.clear()
         unmockkAll()
         XposedBridge.reset()
         AndroidAppHelper.reset()
@@ -103,6 +105,50 @@ class IntegrityServiceHookTest {
         IntegrityServiceHook.install(loaderResolvingIntegrityClasses())
         assertEquals(0, XposedBridge.hookedMembers.size)
         assertTrue(XposedBridge.logs.any { it.contains("methods=0") })
+    }
+
+    // ---- hookBinderResult(): chase the AIDL stub the service returns ----
+
+    class FakeIntegrityBinder : android.os.Binder() {
+        @Suppress("unused")
+        fun requestIntegrityToken(params: Bundle) = Unit
+    }
+
+    @Test
+    fun afterHookChasesBinderReturnedByAServiceMethod() {
+        // The request method lives on the binder Finsky returns, not the service class.
+        IntegrityServiceHook.install(loaderResolvingIntegrityClasses())
+        val callback = XposedBridge.lastCallback!!
+        val before = XposedBridge.hookedMembers.size
+
+        callback.callAfterHookedMethod(
+            XC_MethodHook.MethodHookParam().apply { result = FakeIntegrityBinder() },
+        )
+
+        assertTrue(XposedBridge.hookedMembers.any { it.name == "requestIntegrityToken" })
+        assertTrue(XposedBridge.hookedMembers.size > before)
+        assertTrue(XposedBridge.logs.any { it.contains("binder=") && it.contains("FakeIntegrityBinder") })
+    }
+
+    @Test
+    fun afterHookIgnoresNonBinderResults() {
+        IntegrityServiceHook.install(loaderResolvingIntegrityClasses())
+        val callback = XposedBridge.lastCallback!!
+        val before = XposedBridge.hookedMembers.size
+
+        callback.callAfterHookedMethod(
+            XC_MethodHook.MethodHookParam().apply { result = "not a binder" },
+        )
+
+        assertEquals(before, XposedBridge.hookedMembers.size)
+    }
+
+    @Test
+    fun chasesEachBinderClassOnlyOnce() {
+        IntegrityServiceHook.hookBinderResult(FakeIntegrityBinder())
+        val afterFirst = XposedBridge.hookedMembers.size
+        IntegrityServiceHook.hookBinderResult(FakeIntegrityBinder()) // same class again
+        assertEquals(afterFirst, XposedBridge.hookedMembers.size)
     }
 
     @Test

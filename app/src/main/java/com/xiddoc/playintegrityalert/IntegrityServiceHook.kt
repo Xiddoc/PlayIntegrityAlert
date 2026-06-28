@@ -4,6 +4,7 @@ import android.app.AndroidAppHelper
 import android.content.Context
 import android.os.Binder
 import android.os.Bundle
+import android.os.IBinder
 import android.os.Process
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
@@ -31,24 +32,53 @@ object IntegrityServiceHook {
     /** Whether we've already told the app the hook is alive (once per process). */
     internal var reportedAlive = false
 
-    fun install(classLoader: ClassLoader) {
-        val callback = object : XC_MethodHook() {
-            override fun beforeHookedMethod(param: MethodHookParam) {
-                handleHookedCall(param.method, param.args, param.thisObject)
-            }
+    /** Binder stub classes already chased (see [hookBinderResult]), so each hooks once. */
+    internal val hookedBinderClasses = mutableSetOf<String>()
+
+    private val callback = object : XC_MethodHook() {
+        override fun beforeHookedMethod(param: MethodHookParam) {
+            handleHookedCall(param.method, param.args, param.thisObject)
         }
 
+        override fun afterHookedMethod(param: MethodHookParam) {
+            hookBinderResult(param.result)
+        }
+    }
+
+    fun install(classLoader: ClassLoader) {
         var hooked = 0
         for (className in Constants.INTEGRITY_SERVICE_CLASSES) {
             val clazz = runCatching { classLoader.loadClass(className) }.getOrNull() ?: continue
-            clazz.declaredMethods.forEach { method ->
-                runCatching {
-                    XposedBridge.hookMethod(method, callback)
-                    hooked++
-                }
-            }
+            hooked += hookAllMethods(clazz)
         }
         XposedBridge.log("[${Constants.TAG}] ${Constants.LOG_INSTALLED} pkg=${Constants.VENDING_PACKAGE} methods=$hooked")
+    }
+
+    /** Hooks every declared method of [clazz] with our callback; returns how many took. */
+    private fun hookAllMethods(clazz: Class<*>): Int {
+        var hooked = 0
+        clazz.declaredMethods.forEach { method ->
+            runCatching {
+                XposedBridge.hookMethod(method, callback)
+                hooked++
+            }
+        }
+        return hooked
+    }
+
+    /**
+     * The integrity *request* (e.g. `requestIntegrityToken`) isn't a method on the
+     * service class itself: Finsky returns an AIDL binder stub from `onBind`, and the
+     * cross-process request is dispatched onto *that* object. So whenever a hooked
+     * service method returns an [IBinder], hook the stub's methods too — once per
+     * class — since that's where the caller's request, and its binder UID, land.
+     */
+    internal fun hookBinderResult(result: Any?) {
+        val binder = result as? IBinder ?: return
+        val clazz = binder.javaClass
+        if (!hookedBinderClasses.add(clazz.name)) return
+        val hooked = hookAllMethods(clazz)
+        XposedBridge.log("[${Constants.TAG}] ${Constants.LOG_INSTALLED} binder=${clazz.name} methods=$hooked")
     }
 
     /**

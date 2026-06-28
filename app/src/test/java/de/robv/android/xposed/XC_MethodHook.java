@@ -24,12 +24,28 @@ public class XC_MethodHook {
         beforeHookedMethod(param);
     }
 
+    /** Test-only bridge to the protected callback. */
+    public final void callAfterHookedMethod(MethodHookParam param) throws Throwable {
+        afterHookedMethod(param);
+    }
+
     public static final class MethodHookParam {
         public Object[] args;
         public Member method;
         public Object thisObject;
+        // The real API exposes result via accessors (setting it alters behaviour),
+        // unlike the public fields above, so mirror that shape.
+        private Object result;
 
         public MethodHookParam() {}
+
+        public Object getResult() {
+            return result;
+        }
+
+        public void setResult(Object result) {
+            this.result = result;
+        }
     }
 
     public static class Unhook {
