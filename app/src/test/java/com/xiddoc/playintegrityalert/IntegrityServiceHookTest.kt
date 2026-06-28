@@ -3,6 +3,7 @@ package com.xiddoc.playintegrityalert
 import android.app.AndroidAppHelper
 import android.app.Application
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Bundle
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
@@ -16,11 +17,13 @@ import io.mockk.verify
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowBinder
 
 @RunWith(RobolectricTestRunner::class)
 class IntegrityServiceHookTest {
@@ -37,6 +40,7 @@ class IntegrityServiceHookTest {
         WatchList.source = fakeSource(watchAll = true)
         IntegrityServiceHook.throttle = AlertThrottle(windowMs = 1_000L, clock = { 0L })
         IntegrityServiceHook.reportedAlive = false
+        IntegrityServiceHook.hookedBinderClasses.clear()
         mockkObject(Notifier)
         every { Notifier.notifyDetection(any(), any(), any()) } just Runs
         every { Notifier.reportHookAlive(any()) } just Runs
@@ -47,6 +51,7 @@ class IntegrityServiceHookTest {
         WatchList.source = originalSource
         IntegrityServiceHook.throttle = originalThrottle
         IntegrityServiceHook.reportedAlive = false
+        IntegrityServiceHook.hookedBinderClasses.clear()
         unmockkAll()
         XposedBridge.reset()
         AndroidAppHelper.reset()
@@ -102,6 +107,50 @@ class IntegrityServiceHookTest {
         assertTrue(XposedBridge.logs.any { it.contains("methods=0") })
     }
 
+    // ---- hookBinderResult(): chase the AIDL stub the service returns ----
+
+    class FakeIntegrityBinder : android.os.Binder() {
+        @Suppress("unused")
+        fun requestIntegrityToken(params: Bundle) = Unit
+    }
+
+    @Test
+    fun afterHookChasesBinderReturnedByAServiceMethod() {
+        // The request method lives on the binder Finsky returns, not the service class.
+        IntegrityServiceHook.install(loaderResolvingIntegrityClasses())
+        val callback = XposedBridge.lastCallback!!
+        val before = XposedBridge.hookedMembers.size
+
+        callback.callAfterHookedMethod(
+            XC_MethodHook.MethodHookParam().apply { result = FakeIntegrityBinder() },
+        )
+
+        assertTrue(XposedBridge.hookedMembers.any { it.name == "requestIntegrityToken" })
+        assertTrue(XposedBridge.hookedMembers.size > before)
+        assertTrue(XposedBridge.logs.any { it.contains("binder=") && it.contains("FakeIntegrityBinder") })
+    }
+
+    @Test
+    fun afterHookIgnoresNonBinderResults() {
+        IntegrityServiceHook.install(loaderResolvingIntegrityClasses())
+        val callback = XposedBridge.lastCallback!!
+        val before = XposedBridge.hookedMembers.size
+
+        callback.callAfterHookedMethod(
+            XC_MethodHook.MethodHookParam().apply { result = "not a binder" },
+        )
+
+        assertEquals(before, XposedBridge.hookedMembers.size)
+    }
+
+    @Test
+    fun chasesEachBinderClassOnlyOnce() {
+        IntegrityServiceHook.hookBinderResult(FakeIntegrityBinder())
+        val afterFirst = XposedBridge.hookedMembers.size
+        IntegrityServiceHook.hookBinderResult(FakeIntegrityBinder()) // same class again
+        assertEquals(afterFirst, XposedBridge.hookedMembers.size)
+    }
+
     @Test
     fun installedCallbackReportsWatchedCaller() {
         IntegrityServiceHook.install(loaderResolvingIntegrityClasses())
@@ -131,7 +180,159 @@ class IntegrityServiceHookTest {
         verify(exactly = 0) { Notifier.notifyDetection(any(), any(), any()) }
     }
 
-    // ---- onIntegrityRequest() ----
+    // ---- callerFromBinder() (Standard/Express API: no package Bundle) ----
+
+    private val externalUid = 10_042
+
+    private fun contextWithPm(pm: PackageManager): Context =
+        mockk<Context>(relaxed = true).also { every { it.packageManager } returns pm }
+
+    @Test
+    fun callbackFallsBackToBinderCallerWhenNoPackageBundle() {
+        // A request with no caller package in the args (the Express API shape) is still
+        // attributed via the binder calling UID resolved through the PackageManager.
+        IntegrityServiceHook.install(loaderResolvingIntegrityClasses())
+        val callback = XposedBridge.lastCallback!!
+        ShadowBinder.setCallingUid(externalUid)
+        val pm = mockk<PackageManager>()
+        every { pm.getPackagesForUid(externalUid) } returns arrayOf("com.express.app")
+        val context = contextWithPm(pm)
+        val param = XC_MethodHook.MethodHookParam().apply {
+            args = arrayOf<Any?>("a parcelable request, not a bundle")
+            thisObject = context
+        }
+
+        callback.callBeforeHookedMethod(param)
+
+        verify { Notifier.notifyDetection(context, "com.express.app", any()) }
+    }
+
+    @Test
+    fun binderCallerIgnoresSystemUid() {
+        ShadowBinder.setCallingUid(1_000) // system, not a third-party app
+        assertNull(IntegrityServiceHook.callerFromBinder(mockk<Context>(relaxed = true)))
+    }
+
+    @Test
+    fun binderCallerYieldsNullWithoutAContext() {
+        ShadowBinder.setCallingUid(externalUid)
+        AndroidAppHelper.currentApplication = null
+        assertNull(IntegrityServiceHook.callerFromBinder(serviceObject = null))
+    }
+
+    @Test
+    fun binderCallerYieldsNullWhenUidResolvesToNothing() {
+        ShadowBinder.setCallingUid(externalUid)
+        val pm = mockk<PackageManager>()
+        every { pm.getPackagesForUid(externalUid) } returns null
+        assertNull(IntegrityServiceHook.callerFromBinder(contextWithPm(pm)))
+    }
+
+    @Test
+    fun binderCallerYieldsNullWhenPackageManagerThrows() {
+        ShadowBinder.setCallingUid(externalUid)
+        val pm = mockk<PackageManager>()
+        every { pm.getPackagesForUid(externalUid) } throws RuntimeException("boom")
+        assertNull(IntegrityServiceHook.callerFromBinder(contextWithPm(pm)))
+    }
+
+    @Test
+    fun binderCallerIgnoresPlayStoreItself() {
+        ShadowBinder.setCallingUid(externalUid)
+        val pm = mockk<PackageManager>()
+        every { pm.getPackagesForUid(externalUid) } returns arrayOf(Constants.VENDING_PACKAGE)
+        assertNull(IntegrityServiceHook.callerFromBinder(contextWithPm(pm)))
+    }
+
+    @Test
+    fun binderCallerIgnoresOurOwnApp() {
+        ShadowBinder.setCallingUid(externalUid)
+        val pm = mockk<PackageManager>()
+        every { pm.getPackagesForUid(externalUid) } returns arrayOf(Constants.OWN_PACKAGE)
+        assertNull(IntegrityServiceHook.callerFromBinder(contextWithPm(pm)))
+    }
+
+    @Test
+    fun binderCallerResolvesThirdPartyApp() {
+        ShadowBinder.setCallingUid(externalUid)
+        val pm = mockk<PackageManager>()
+        every { pm.getPackagesForUid(externalUid) } returns arrayOf("com.third.party")
+        assertEquals("com.third.party", IntegrityServiceHook.callerFromBinder(contextWithPm(pm)))
+    }
+
+    // ---- handleHookedCall(): attribution, diagnostics, context resolution ----
+
+    private fun bundleArgs(build: Bundle.() -> Unit) =
+        arrayOf<Any?>(Bundle().apply(build))
+
+    @Test
+    fun handlesCallByAttributingBundleCaller() {
+        val context = mockk<Context>(relaxed = true)
+        IntegrityServiceHook.handleHookedCall(
+            method = null,
+            args = bundleArgs { putString("package.name", "com.watched.app") },
+            serviceObject = context,
+        )
+        verify { Notifier.notifyDetection(context, "com.watched.app", any()) }
+    }
+
+    @Test
+    fun fallsBackToAppContextWhenServiceObjectIsNotAContext() {
+        val app = mockk<Application>(relaxed = true)
+        AndroidAppHelper.currentApplication = app
+
+        IntegrityServiceHook.handleHookedCall(
+            method = null,
+            args = bundleArgs { putString("package.name", "com.watched.app") },
+            serviceObject = "not a context",
+        )
+
+        verify { Notifier.notifyDetection(app, "com.watched.app", any()) }
+    }
+
+    @Test
+    fun logsUnattributedCallWithMethodNameAndArgShapes() {
+        // No caller anywhere -> the call is logged (with method + arg shapes) for diagnosis.
+        ShadowBinder.setCallingUid(1_000) // system, so the binder fallback yields nothing
+        val method = FakeIntegrityService::class.java.getDeclaredMethod("warmUpIntegrityToken", Int::class.java)
+
+        IntegrityServiceHook.handleHookedCall(
+            method = method,
+            args = bundleArgs { putString("token", "verdict") },
+            serviceObject = mockk<Context>(relaxed = true),
+        )
+
+        verify(exactly = 0) { Notifier.notifyDetection(any(), any(), any()) }
+        assertTrue(
+            XposedBridge.logs.any {
+                it.contains("unattributed integrity call warmUpIntegrityToken") &&
+                    it.contains("Bundle{token}")
+            },
+        )
+    }
+
+    // ---- describeArgs() ----
+
+    @Test
+    fun describeArgsRendersNullArrayBundlesAndOtherTypes() {
+        assertEquals("null", IntegrityServiceHook.describeArgs(null))
+        // One key keeps the rendering deterministic (keySet() order isn't guaranteed).
+        assertEquals(
+            "[null, Bundle{nonce}, java.lang.String]",
+            IntegrityServiceHook.describeArgs(
+                arrayOf<Any?>(null, Bundle().apply { putString("nonce", "1") }, "s"),
+            ),
+        )
+    }
+
+    @Test
+    fun describeArgsToleratesABundleWhoseKeysetThrows() {
+        val bundle = mockk<Bundle>()
+        every { bundle.keySet() } throws RuntimeException("boom")
+        assertEquals("[Bundle{?}]", IntegrityServiceHook.describeArgs(arrayOf<Any?>(bundle)))
+    }
+
+    // ---- onIntegrityRequest(): watch-list + throttle ----
 
     @Test
     fun ignoresUnwatchedCaller() {
@@ -152,41 +353,23 @@ class IntegrityServiceHookTest {
     }
 
     @Test
-    fun usesServiceObjectAsContextWhenPossible() {
-        val context = mockk<Context>(relaxed = true)
-        IntegrityServiceHook.onIntegrityRequest("com.x", context)
-        verify { Notifier.notifyDetection(context, "com.x", any()) }
-    }
-
-    @Test
-    fun fallsBackToAppContextWhenServiceObjectIsNotAContext() {
-        val app = mockk<Application>(relaxed = true)
-        AndroidAppHelper.currentApplication = app
-
-        IntegrityServiceHook.onIntegrityRequest("com.x", serviceObject = "not a context")
-
-        verify { Notifier.notifyDetection(app, "com.x", any()) }
-    }
-
-    @Test
     fun skipsNotificationWhenNoContextAvailable() {
-        AndroidAppHelper.currentApplication = null
-        IntegrityServiceHook.onIntegrityRequest("com.x", serviceObject = null)
+        IntegrityServiceHook.onIntegrityRequest("com.x", context = null)
         verify(exactly = 0) { Notifier.notifyDetection(any(), any(), any()) }
     }
 
-    // ---- hook-alive heartbeat ----
+    // ---- hook-alive heartbeat (any hooked call proves liveness) ----
 
     @Test
-    fun reportsHookAliveOnceEvenAcrossManyRequests() {
-        // Even an unwatched caller proves the hook is live; report it exactly once.
-        WatchList.source = fakeSource(watchAll = false, watched = emptySet())
+    fun reportsHookAliveOnceEvenAcrossManyCalls() {
+        // Even a call we can't attribute proves the hook is live; report it exactly once.
+        ShadowBinder.setCallingUid(1_000) // unattributable, so only the heartbeat fires
         val context = mockk<Context>(relaxed = true)
 
         assertFalse(IntegrityServiceHook.reportedAlive)
-        IntegrityServiceHook.onIntegrityRequest("com.x", context)
+        IntegrityServiceHook.handleHookedCall(method = null, args = null, serviceObject = context)
         assertTrue(IntegrityServiceHook.reportedAlive)
-        IntegrityServiceHook.onIntegrityRequest("com.y", context)
+        IntegrityServiceHook.handleHookedCall(method = null, args = null, serviceObject = context)
 
         verify(exactly = 1) { Notifier.reportHookAlive(context) }
     }
@@ -194,7 +377,7 @@ class IntegrityServiceHookTest {
     @Test
     fun doesNotReportHookAliveWithoutAContext() {
         AndroidAppHelper.currentApplication = null
-        IntegrityServiceHook.onIntegrityRequest("com.x", serviceObject = null)
+        IntegrityServiceHook.handleHookedCall(method = null, args = null, serviceObject = null)
         verify(exactly = 0) { Notifier.reportHookAlive(any()) }
     }
 }

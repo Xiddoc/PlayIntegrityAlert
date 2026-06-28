@@ -2,8 +2,13 @@ package com.xiddoc.playintegrityalert
 
 import android.app.AndroidAppHelper
 import android.content.Context
+import android.os.Binder
+import android.os.Bundle
+import android.os.IBinder
+import android.os.Process
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
+import java.lang.reflect.Member
 
 /**
  * Installed once, inside the Play Store (`com.android.vending`) process. Hooks the
@@ -27,35 +32,111 @@ object IntegrityServiceHook {
     /** Whether we've already told the app the hook is alive (once per process). */
     internal var reportedAlive = false
 
-    fun install(classLoader: ClassLoader) {
-        val callback = object : XC_MethodHook() {
-            override fun beforeHookedMethod(param: MethodHookParam) {
-                val caller = IntegrityRequestInspector.callerPackage(param.args) ?: return
-                onIntegrityRequest(caller, param.thisObject)
-            }
+    /** Binder stub classes already chased (see [hookBinderResult]), so each hooks once. */
+    internal val hookedBinderClasses = mutableSetOf<String>()
+
+    private val callback = object : XC_MethodHook() {
+        override fun beforeHookedMethod(param: MethodHookParam) {
+            handleHookedCall(param.method, param.args, param.thisObject)
         }
 
+        override fun afterHookedMethod(param: MethodHookParam) {
+            hookBinderResult(param.result)
+        }
+    }
+
+    fun install(classLoader: ClassLoader) {
         var hooked = 0
         for (className in Constants.INTEGRITY_SERVICE_CLASSES) {
             val clazz = runCatching { classLoader.loadClass(className) }.getOrNull() ?: continue
-            clazz.declaredMethods.forEach { method ->
-                runCatching {
-                    XposedBridge.hookMethod(method, callback)
-                    hooked++
-                }
-            }
+            hooked += hookAllMethods(clazz)
         }
         XposedBridge.log("[${Constants.TAG}] ${Constants.LOG_INSTALLED} pkg=${Constants.VENDING_PACKAGE} methods=$hooked")
     }
 
-    internal fun onIntegrityRequest(caller: String, serviceObject: Any?) {
-        // The service object is itself a Context; fall back to the app context.
-        val context = serviceObject as? Context ?: AndroidAppHelper.currentApplication()
+    /** Hooks every declared method of [clazz] with our callback; returns how many took. */
+    private fun hookAllMethods(clazz: Class<*>): Int {
+        var hooked = 0
+        clazz.declaredMethods.forEach { method ->
+            runCatching {
+                XposedBridge.hookMethod(method, callback)
+                hooked++
+            }
+        }
+        return hooked
+    }
 
-        // A request reaching us proves the hook is live in Play Store: tell the app
-        // once so its status can read "watching" without our app needing scope.
+    /**
+     * The integrity *request* (e.g. `requestIntegrityToken`) isn't a method on the
+     * service class itself: Finsky returns an AIDL binder stub from `onBind`, and the
+     * cross-process request is dispatched onto *that* object. So whenever a hooked
+     * service method returns an [IBinder], hook the stub's methods too — once per
+     * class — since that's where the caller's request, and its binder UID, land.
+     */
+    internal fun hookBinderResult(result: Any?) {
+        val binder = result as? IBinder ?: return
+        val clazz = binder.javaClass
+        if (!hookedBinderClasses.add(clazz.name)) return
+        val hooked = hookAllMethods(clazz)
+        XposedBridge.log("[${Constants.TAG}] ${Constants.LOG_INSTALLED} binder=${clazz.name} methods=$hooked")
+    }
+
+    /**
+     * Entry point for every hooked integrity-service method call.
+     *
+     * Reaching here at all proves the hook is live inside Play Store, so we flip the
+     * app's "watching" heartbeat on the first call — independent of whether a caller
+     * can be attributed. We then try the Bundle path (classic API) and the binder-UID
+     * path (Standard/Express API); if neither yields a caller we log the call's shape
+     * so an undetected request can be diagnosed straight from the LSPosed log.
+     */
+    internal fun handleHookedCall(method: Member?, args: Array<Any?>?, serviceObject: Any?) {
+        val context = contextFrom(serviceObject)
         reportAliveOnce(context)
 
+        val caller = IntegrityRequestInspector.callerPackage(args) ?: callerFromBinder(serviceObject)
+        if (caller == null) {
+            val name = if (method == null) "?" else method.name
+            XposedBridge.log(
+                "[${Constants.TAG}] unattributed integrity call $name args=${describeArgs(args)}",
+            )
+            return
+        }
+        onIntegrityRequest(caller, context)
+    }
+
+    /** Compact, log-safe description of a hooked call's arguments, for diagnosis. */
+    internal fun describeArgs(args: Array<Any?>?): String {
+        if (args == null) return "null"
+        return args.joinToString(prefix = "[", postfix = "]") { arg ->
+            when (arg) {
+                null -> "null"
+                is Bundle -> "Bundle{${runCatching { arg.keySet().joinToString(",") }.getOrDefault("?")}}"
+                else -> arg.javaClass.name
+            }
+        }
+    }
+
+    /**
+     * Caller of an integrity request whose package isn't in a Bundle (the Standard/
+     * Express Integrity API hands Finsky a Parcelable instead). Inside the binder
+     * transaction the calling app's UID is always available, so we resolve it to a
+     * package via the Play Store process's [android.content.pm.PackageManager].
+     * Returns null for system/host-process callers or when no app can be resolved.
+     */
+    internal fun callerFromBinder(serviceObject: Any?): String? {
+        val callingUid = Binder.getCallingUid()
+        if (!IntegrityRequestInspector.isExternalAppCaller(callingUid, Process.myUid())) return null
+        val context = contextFrom(serviceObject) ?: return null
+        val pkg = runCatching {
+            context.packageManager.getPackagesForUid(callingUid)?.firstOrNull()
+        }.getOrNull() ?: return null
+        // Never attribute to Play Store or ourselves — those aren't the requesting app.
+        if (pkg == Constants.VENDING_PACKAGE || pkg == Constants.OWN_PACKAGE) return null
+        return pkg
+    }
+
+    internal fun onIntegrityRequest(caller: String, context: Context?) {
         if (!WatchList.isWatched(caller)) return
         if (!throttle.allow(caller)) return
 
@@ -71,4 +152,8 @@ object IntegrityServiceHook {
         reportedAlive = true
         Notifier.reportHookAlive(context)
     }
+
+    /** The hooked service object is itself a Context; fall back to the app context. */
+    private fun contextFrom(serviceObject: Any?): Context? =
+        serviceObject as? Context ?: AndroidAppHelper.currentApplication()
 }

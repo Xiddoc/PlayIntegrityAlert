@@ -40,6 +40,21 @@ object IntegrityRequestInspector {
         return false
     }
 
+    /** Linux UIDs at or above this belong to installed apps, not the system. */
+    internal const val FIRST_APP_UID = 10_000
+
+    /**
+     * Whether [callingUid] (the binder identity of whoever invoked the hooked
+     * service method) is a third-party app worth attributing a request to, rather
+     * than the system or the Play Store host process ([ownUid]) itself.
+     *
+     * Used to recover the caller of a Standard/Express Integrity request, which
+     * reaches Finsky as a Parcelable carrying no package Bundle — so the only
+     * reliable identity is the binder calling UID.
+     */
+    fun isExternalAppCaller(callingUid: Int, ownUid: Int): Boolean =
+        callingUid >= FIRST_APP_UID && callingUid != ownUid
+
     internal fun extractCallerPackage(args: Array<Any?>): String? {
         args.forEach { arg ->
             val bundle = arg as? Bundle ?: return@forEach

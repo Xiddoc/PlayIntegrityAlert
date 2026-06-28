@@ -4,10 +4,17 @@ import android.Manifest
 import android.app.Application
 import android.app.NotificationManager
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
 import android.os.Build
 import androidx.test.core.app.ApplicationProvider
+import io.mockk.every
+import io.mockk.mockk
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -141,5 +148,31 @@ class DetectionReceiverTest {
         receiver.onReceive(app, detectionIntent())
 
         assertEquals(1, postedCount())
+    }
+
+    @Test
+    fun largeIconUsesTheRequestingAppsIcon() {
+        // A resolvable app yields a bitmap of its own icon (here an 8x8 stand-in),
+        // not our launcher icon.
+        val iconBitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
+        val pm = mockk<PackageManager>()
+        every { pm.getApplicationIcon(any<String>()) } returns BitmapDrawable(app.resources, iconBitmap)
+        val context = object : ContextWrapper(app) {
+            override fun getPackageManager() = pm
+        }
+
+        assertEquals(8, receiver.largeIcon(context, "com.caller.app").width)
+    }
+
+    @Test
+    fun largeIconFallsBackToOurIconWhenTheAppCannotBeResolved() {
+        val pm = mockk<PackageManager>()
+        every { pm.getApplicationIcon(any<String>()) } throws PackageManager.NameNotFoundException()
+        val context = object : ContextWrapper(app) {
+            override fun getPackageManager() = pm
+        }
+
+        // Falls back to our launcher icon instead of throwing.
+        assertNotNull(receiver.largeIcon(context, "com.uninstalled.app"))
     }
 }
