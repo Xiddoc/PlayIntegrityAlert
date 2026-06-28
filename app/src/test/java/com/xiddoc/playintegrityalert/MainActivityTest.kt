@@ -2,12 +2,18 @@ package com.xiddoc.playintegrityalert
 
 import android.Manifest
 import android.app.Application
+import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.provider.Settings
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.widget.SwitchCompat
 import androidx.test.core.app.ApplicationProvider
+import io.mockk.every
+import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -149,9 +155,28 @@ class MainActivityTest {
 
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
 
-        val history = activity.findViewById<TextView>(R.id.history).text.toString()
-        assertTrue(history.contains("Alpha"))
-        assertTrue(history.contains("com.a"))
+        val container = activity.findViewById<LinearLayout>(R.id.history)
+        val row = container.getChildAt(0)
+        val rowText = row.findViewById<TextView>(R.id.detection_text).text.toString()
+        assertTrue(rowText.contains("Alpha"))
+        assertTrue(rowText.contains("com.a"))
+    }
+
+    @Test
+    @RoboConfig(sdk = [33])
+    fun appIconResolvesRequestingAppIconOrFallsBackToOurs() {
+        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+
+        // Resolvable app -> its own icon.
+        val appIcon = ColorDrawable(Color.RED)
+        val resolving = mockk<PackageManager>()
+        every { resolving.getApplicationIcon(any<String>()) } returns appIcon
+        assertEquals(appIcon, activity.appIconFor(resolving, "com.installed.app"))
+
+        // Unresolvable app -> fall back to our launcher icon instead of crashing.
+        val throwing = mockk<PackageManager>()
+        every { throwing.getApplicationIcon(any<String>()) } throws PackageManager.NameNotFoundException()
+        assertNotNull(activity.appIconFor(throwing, "com.uninstalled.app"))
     }
 
     @Test
