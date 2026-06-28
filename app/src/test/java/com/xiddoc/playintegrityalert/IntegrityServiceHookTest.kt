@@ -214,7 +214,79 @@ class IntegrityServiceHookTest {
         assertEquals("com.third.party", IntegrityServiceHook.callerFromBinder(contextWithPm(pm)))
     }
 
-    // ---- onIntegrityRequest() ----
+    // ---- handleHookedCall(): attribution, diagnostics, context resolution ----
+
+    private fun bundleArgs(build: Bundle.() -> Unit) =
+        arrayOf<Any?>(Bundle().apply(build))
+
+    @Test
+    fun handlesCallByAttributingBundleCaller() {
+        val context = mockk<Context>(relaxed = true)
+        IntegrityServiceHook.handleHookedCall(
+            method = null,
+            args = bundleArgs { putString("package.name", "com.watched.app") },
+            serviceObject = context,
+        )
+        verify { Notifier.notifyDetection(context, "com.watched.app", any()) }
+    }
+
+    @Test
+    fun fallsBackToAppContextWhenServiceObjectIsNotAContext() {
+        val app = mockk<Application>(relaxed = true)
+        AndroidAppHelper.currentApplication = app
+
+        IntegrityServiceHook.handleHookedCall(
+            method = null,
+            args = bundleArgs { putString("package.name", "com.watched.app") },
+            serviceObject = "not a context",
+        )
+
+        verify { Notifier.notifyDetection(app, "com.watched.app", any()) }
+    }
+
+    @Test
+    fun logsUnattributedCallWithMethodNameAndArgShapes() {
+        // No caller anywhere -> the call is logged (with method + arg shapes) for diagnosis.
+        ShadowBinder.setCallingUid(1_000) // system, so the binder fallback yields nothing
+        val method = FakeIntegrityService::class.java.getDeclaredMethod("warmUpIntegrityToken", Int::class.java)
+
+        IntegrityServiceHook.handleHookedCall(
+            method = method,
+            args = bundleArgs { putString("token", "verdict") },
+            serviceObject = mockk<Context>(relaxed = true),
+        )
+
+        verify(exactly = 0) { Notifier.notifyDetection(any(), any(), any()) }
+        assertTrue(
+            XposedBridge.logs.any {
+                it.contains("unattributed integrity call warmUpIntegrityToken") &&
+                    it.contains("Bundle{token}")
+            },
+        )
+    }
+
+    // ---- describeArgs() ----
+
+    @Test
+    fun describeArgsRendersNullArrayBundlesAndOtherTypes() {
+        assertEquals("null", IntegrityServiceHook.describeArgs(null))
+        // One key keeps the rendering deterministic (keySet() order isn't guaranteed).
+        assertEquals(
+            "[null, Bundle{nonce}, java.lang.String]",
+            IntegrityServiceHook.describeArgs(
+                arrayOf<Any?>(null, Bundle().apply { putString("nonce", "1") }, "s"),
+            ),
+        )
+    }
+
+    @Test
+    fun describeArgsToleratesABundleWhoseKeysetThrows() {
+        val bundle = mockk<Bundle>()
+        every { bundle.keySet() } throws RuntimeException("boom")
+        assertEquals("[Bundle{?}]", IntegrityServiceHook.describeArgs(arrayOf<Any?>(bundle)))
+    }
+
+    // ---- onIntegrityRequest(): watch-list + throttle ----
 
     @Test
     fun ignoresUnwatchedCaller() {
@@ -235,41 +307,23 @@ class IntegrityServiceHookTest {
     }
 
     @Test
-    fun usesServiceObjectAsContextWhenPossible() {
-        val context = mockk<Context>(relaxed = true)
-        IntegrityServiceHook.onIntegrityRequest("com.x", context)
-        verify { Notifier.notifyDetection(context, "com.x", any()) }
-    }
-
-    @Test
-    fun fallsBackToAppContextWhenServiceObjectIsNotAContext() {
-        val app = mockk<Application>(relaxed = true)
-        AndroidAppHelper.currentApplication = app
-
-        IntegrityServiceHook.onIntegrityRequest("com.x", serviceObject = "not a context")
-
-        verify { Notifier.notifyDetection(app, "com.x", any()) }
-    }
-
-    @Test
     fun skipsNotificationWhenNoContextAvailable() {
-        AndroidAppHelper.currentApplication = null
-        IntegrityServiceHook.onIntegrityRequest("com.x", serviceObject = null)
+        IntegrityServiceHook.onIntegrityRequest("com.x", context = null)
         verify(exactly = 0) { Notifier.notifyDetection(any(), any(), any()) }
     }
 
-    // ---- hook-alive heartbeat ----
+    // ---- hook-alive heartbeat (any hooked call proves liveness) ----
 
     @Test
-    fun reportsHookAliveOnceEvenAcrossManyRequests() {
-        // Even an unwatched caller proves the hook is live; report it exactly once.
-        WatchList.source = fakeSource(watchAll = false, watched = emptySet())
+    fun reportsHookAliveOnceEvenAcrossManyCalls() {
+        // Even a call we can't attribute proves the hook is live; report it exactly once.
+        ShadowBinder.setCallingUid(1_000) // unattributable, so only the heartbeat fires
         val context = mockk<Context>(relaxed = true)
 
         assertFalse(IntegrityServiceHook.reportedAlive)
-        IntegrityServiceHook.onIntegrityRequest("com.x", context)
+        IntegrityServiceHook.handleHookedCall(method = null, args = null, serviceObject = context)
         assertTrue(IntegrityServiceHook.reportedAlive)
-        IntegrityServiceHook.onIntegrityRequest("com.y", context)
+        IntegrityServiceHook.handleHookedCall(method = null, args = null, serviceObject = context)
 
         verify(exactly = 1) { Notifier.reportHookAlive(context) }
     }
@@ -277,7 +331,7 @@ class IntegrityServiceHookTest {
     @Test
     fun doesNotReportHookAliveWithoutAContext() {
         AndroidAppHelper.currentApplication = null
-        IntegrityServiceHook.onIntegrityRequest("com.x", serviceObject = null)
+        IntegrityServiceHook.handleHookedCall(method = null, args = null, serviceObject = null)
         verify(exactly = 0) { Notifier.reportHookAlive(any()) }
     }
 }
