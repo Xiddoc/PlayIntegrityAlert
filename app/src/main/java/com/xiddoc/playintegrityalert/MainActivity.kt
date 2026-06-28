@@ -4,16 +4,20 @@ import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
+import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
+import androidx.core.content.ContextCompat
 import java.text.DateFormat
 import java.util.Date
 
@@ -104,17 +108,37 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderHistory() {
-        val view = findViewById<TextView>(R.id.history)
+        val container = findViewById<LinearLayout>(R.id.history)
+        container.removeAllViews()
         val detections = DetectionStore.list(this)
         if (detections.isEmpty()) {
-            view.text = getString(R.string.history_empty)
+            container.addView(emptyHistoryView())
             return
         }
         val df = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM)
-        view.text = detections.joinToString("\n\n") { d ->
-            "${df.format(Date(d.timestamp))}\n${d.label} (${d.packageName})\n→ ${d.detail}"
+        val pm = packageManager
+        detections.forEach { d ->
+            val row = layoutInflater.inflate(R.layout.detection_row, container, false)
+            row.findViewById<ImageView>(R.id.detection_icon).setImageDrawable(appIconFor(pm, d.packageName))
+            row.findViewById<TextView>(R.id.detection_text).text =
+                "${df.format(Date(d.timestamp))}\n${d.label} (${d.packageName})\n→ ${d.detail}"
+            container.addView(row)
         }
     }
+
+    private fun emptyHistoryView(): TextView = TextView(this).apply {
+        text = getString(R.string.history_empty)
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+        textSize = 13f
+    }
+
+    /**
+     * The requesting app's own icon for a history row, falling back to our launcher
+     * icon when the app can't be resolved (e.g. uninstalled since the detection).
+     */
+    internal fun appIconFor(pm: PackageManager, packageName: String): Drawable? =
+        runCatching { pm.getApplicationIcon(packageName) }
+            .getOrElse { ContextCompat.getDrawable(this, R.mipmap.ic_launcher) }
 
     private fun requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
