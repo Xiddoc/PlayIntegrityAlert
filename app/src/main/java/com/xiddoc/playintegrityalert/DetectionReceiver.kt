@@ -5,9 +5,11 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.graphics.drawable.toBitmapOrNull
 
 /**
  * Receives detection events broadcast from hooked app processes and raises the
@@ -53,6 +55,20 @@ class DetectionReceiver : BroadcastReceiver() {
         pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
     }.getOrDefault(packageName)
 
+    /**
+     * The requesting app's own icon, shown as the notification's large icon so the
+     * alert is recognisable at a glance. Falls back to our launcher icon if the app
+     * can't be resolved (e.g. uninstalled since the request). The small status-bar
+     * icon stays our own monochrome glyph — Android tints small icons flat, so an
+     * app icon can't be used there.
+     */
+    internal fun largeIcon(context: Context, packageName: String): Bitmap {
+        val callerIcon = runCatching { context.packageManager.getApplicationIcon(packageName) }
+            .getOrNull()
+            ?.toBitmapOrNull()
+        return callerIcon ?: BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher)
+    }
+
     private fun postNotification(context: Context, packageName: String, label: String) {
         val openApp = PendingIntent.getActivity(
             context,
@@ -63,7 +79,7 @@ class DetectionReceiver : BroadcastReceiver() {
 
         val notification = NotificationCompat.Builder(context, Constants.CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_small)
-            .setLargeIcon(BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher))
+            .setLargeIcon(largeIcon(context, packageName))
             .setContentTitle(context.getString(R.string.notification_title))
             .setContentText(context.getString(R.string.notification_text, label))
             .setStyle(
